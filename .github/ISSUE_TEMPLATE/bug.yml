@@ -1,0 +1,27 @@
+name: Something went wrong
+description: A crash, a wrong result or a confusing message
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: What you ran, what you expected and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: fuseshot doctor
+      description: The output of `fuseshot doctor`. It shows no keys or photos, but check it before posting.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Log
+      description: Run the command again with `-v` and paste the end of the log. Remove anything private.
+      render: text
+  - type: dropdown
+    attributes:
+      label: Installed from
+      options: [pip, Docker, Windows download, source]
+    validations:
+      required: true

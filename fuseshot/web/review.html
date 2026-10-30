@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Fuseshot</title>
+<link rel="stylesheet" href="__BASE__/static/review.css?v=__V__">
+<script type="importmap">__IMPORT_MAP__</script>
+__BASE_SCRIPT__
+</head><body>
+<header id="navbar" class="navbar">
+  <button class="icon-btn only-narrow" id="menu" title="Menu" data-icon="menu"></button>
+  <a class="brand" href="__BASE__/"><span class="logo" data-icon="panoramaSphere"></span><span>Fuseshot</span></a>
+  <label class="search"><span data-icon="magnify"></span><input id="search" type="search" placeholder="Search sets, cameras, places" autocomplete="off"></label>
+  <div class="nav-end">
+    <a class="icon-btn" href="__BASE__/tables" title="Tables and candidate sets" data-icon="table"></a>
+    <button class="icon-btn" id="help" title="Keyboard shortcuts (?)" data-icon="keyboard"></button>
+  </div>
+</header>
+<header id="selectbar" class="navbar selectbar" hidden>
+  <button class="icon-btn" id="clearsel" title="Clear selection (Esc)" data-icon="close"></button>
+  <span class="selcount"><b id="selcount">0</b> selected</span>
+  <div class="nav-end">
+    <button class="icon-btn" id="selall" title="Select all shown (Ctrl+A)" data-icon="selectAll"></button>
+    <button class="pill discard" data-bulk="discarded" title="Discard (D)"><span data-icon="closeCircle"></span><span>Discard</span></button>
+    <button class="pill keep" data-bulk="kept" title="Keep (K)"><span data-icon="checkCircle"></span><span>Keep</span></button>
+  </div>
+</header>
+<div class="shell">
+  <nav id="sidebar" class="sidebar">
+    <div class="side-group" id="statuslinks"></div>
+    <div class="side-title">More</div>
+    <a class="side-link" href="__BASE__/tables"><span data-icon="table"></span><span>Tables and candidates</span></a>
+    <a class="side-link" href="https://github.com/bearjcc/fuseshot" title="Fuseshot is free software under the AGPL"><span data-icon="openInNew"></span><span>Source code</span></a>
+    <div class="usage">
+      <div class="usage-row"><span data-icon="checkAll"></span><span>Reviewed</span></div>
+      <div class="usage-bar"><i id="usagebar"></i></div>
+      <div class="usage-text" id="usagetext"></div>
+    </div>
+    <div class="usage" id="running" hidden>
+      <div class="usage-row"><span data-icon="play"></span><span id="runstage"></span></div>
+      <div class="usage-bar"><i id="runbar"></i></div>
+      <div class="usage-text" id="runtext"></div>
+    </div>
+  </nav>
+  <main id="main" class="main">
+    <div class="toolbar">
+      <div class="title-row">
+        <h1 id="title">Review</h1><span class="count" id="viewcount"></span>
+        <div class="spacer"></div>
+        <div class="seg" id="sortseg" role="group" aria-label="Order">
+          <button data-sort="queue" title="Sets that need a look first">Queue</button>
+          <button data-sort="date" title="By date taken">Date</button>
+        </div>
+        <button class="pill primary" id="start"><span data-icon="play"></span><span>Review one by one</span></button>
+      </div>
+      <div class="chips" id="kindchips"></div>
+    </div>
+    <div id="grid" class="grid"></div>
+    <p id="empty" class="empty" hidden></p>
+  </main>
+</div>
+
+<div id="viewer" class="viewer" hidden>
+  <div class="v-main">
+    <div class="v-progress"><i id="vprogress"></i></div>
+    <div id="vstage" class="v-stage">
+      <div id="vcard" class="v-card"><img id="vimg" alt="" draggable="false"><img id="vbefore" alt="" draggable="false" hidden></div>
+      <div id="vpsv" class="v-psv" hidden></div>
+      <div id="vplaceholder" class="v-placeholder" hidden></div>
+      <div id="vhint" class="v-hint"></div>
+      <span id="vbadge" class="v-badge" hidden></span>
+    </div>
+    <div class="v-top">
+      <button class="icon-btn" id="vclose" title="Close (Esc)" data-icon="arrowLeft"></button>
+      <div class="v-title"><b id="vname"></b><span id="vsub"></span></div>
+      <div class="spacer"></div>
+      <button class="icon-btn" id="vsphere" title="View as a sphere, as Immich shows it (V)" data-icon="sphere" hidden></button>
+      <button class="icon-btn" id="vcompare" title="Hold to see the earlier version (B)" data-icon="compare" hidden></button>
+      <button class="icon-btn" id="vframes" title="Original frames (O)" data-icon="frames"></button>
+      <button class="icon-btn" id="vselect" title="Select (X)" data-icon="circle"></button>
+      <a class="icon-btn" id="vimmich" target="_blank" rel="noopener" title="Open in Immich" data-icon="openInNew"></a>
+      <a class="icon-btn" id="vedit" title="Full editor page: render, AI fill, alignment, faces" data-icon="wrench"></a>
+      <button class="icon-btn" id="vinfo" title="Info (I)" data-icon="info"></button>
+    </div>
+    <button class="v-nav v-prev" id="vprev" title="Previous (Left)" data-icon="chevronLeft"></button>
+    <button class="v-nav v-next" id="vnext" title="Next (Right)" data-icon="chevronRight"></button>
+    <div class="v-bottom">
+      <div id="vstrip" class="v-strip" hidden></div>
+      <div class="v-actions">
+        <button class="act discard" data-decide="discarded" title="Discard (D, or swipe left)"><span data-icon="close"></span><span class="lbl">Discard</span></button>
+        <button class="act edit" id="vdoedit" title="Edit: type, stitch model, view, crop, AI fill (E, or swipe up)"><span data-icon="pencil"></span><span class="lbl">Edit</span></button>
+        <button class="act undo" id="vundo" title="Undo (U)"><span data-icon="undo"></span></button>
+        <button class="act skip" id="vskip" title="Skip, decide later (Space, or swipe down)"><span data-icon="chevronRight"></span></button>
+        <button class="act keep" data-decide="kept" title="Keep (K, or swipe right)"><span data-icon="check"></span><span class="lbl">Keep</span></button>
+      </div>
+    </div>
+  </div>
+  <aside id="vpanel" class="v-panel" hidden>
+    <div class="p-head"><button class="icon-btn" id="pclose" title="Close (I)" data-icon="close"></button><h2>Info</h2></div>
+    <div id="pbody" class="p-body"></div>
+  </aside>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<div id="modal" class="modal" hidden><div class="modal-card" role="dialog" aria-label="Keyboard shortcuts">
+  <div class="modal-head"><h2>Keyboard shortcuts</h2><button class="icon-btn" id="modalclose" data-icon="close" title="Close (Esc)"></button></div>
+  <div id="modalbody" class="modal-body"></div>
+</div></div>
+<script type="module" src="__BASE__/static/review.js?v=__V__"></script>
+</body></html>

@@ -1,0 +1,6 @@
+[
+ {"name": "Example lookout", "lat": 36.0617, "lon": -112.1078, "radius_km": 1.0,
+  "place_names": ["Grand Canyon Village, Arizona"]},
+ {"name": "Example park with several spots", "radius_km": 1.5,
+  "points": [[37.7459, -119.5332], [37.7166, -119.6464]], "place_names": []}
+]

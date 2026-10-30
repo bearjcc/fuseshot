@@ -1,0 +1,9 @@
+name: Idea
+description: Something Fuseshot could find, make or do better
+body:
+  - type: textarea
+    attributes:
+      label: What would you like
+      description: The kind of photo set, and what you would want made from it. A sample set helps a lot, if you can share one.
+    validations:
+      required: true

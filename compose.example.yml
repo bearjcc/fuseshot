@@ -1,0 +1,37 @@
+# Fuseshot next to Immich. Add the fuseshot service to the docker-compose.yml that runs
+# Immich (or keep this file beside it and run both with `docker compose -f ... -f ...`).
+#
+#   1. In Immich, make an API key (Account Settings > API Keys). Read access is enough.
+#   2. Put it in .env as FUSESHOT_IMMICH_KEY, with a long random FUSESHOT_REVIEW_TOKEN.
+#   3. docker compose up -d fuseshot
+#   4. docker compose run --rm fuseshot run        (the first pass can take hours)
+#   5. Open http://<server>:8765/?token=<your token>
+#
+# Fuseshot only reads from Immich. Results stay in the fuseshot-data volume until you
+# approve them on the review page.
+
+services:
+  fuseshot:
+    image: ghcr.io/bearjcc/fuseshot:0.1
+    # Or build it from a copy of the repository instead of pulling it:
+    # build: ./fuseshot
+    container_name: fuseshot
+    command: ["review"]
+    environment:
+      FUSESHOT_IMMICH_URL: http://immich-server:2283
+      FUSESHOT_IMMICH_KEY: ${FUSESHOT_IMMICH_KEY}
+      FUSESHOT_REVIEW_TOKEN: ${FUSESHOT_REVIEW_TOKEN}
+      # The address you open Immich at in the browser, for "open in Immich" links.
+      # FUSESHOT_WEB_URL: https://photos.example.com
+      # Serve under a path behind your reverse proxy:
+      # FUSESHOT_BASE_PATH: /fuseshot
+    volumes:
+      - fuseshot-data:/data
+    ports:
+      - "8765:8765"
+    depends_on:
+      - immich-server
+    restart: unless-stopped
+
+volumes:
+  fuseshot-data:

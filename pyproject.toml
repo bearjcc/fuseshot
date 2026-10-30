@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fuseshot"
+dynamic = ["version"]
+description = "Panoramas, splats, action loops and group shots from the photo sets already in your Immich library or photo folders"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE", "THIRD_PARTY.md"]
+authors = [{ name = "Joseph Caswell" }]
+requires-python = ">=3.11"
+keywords = ["immich", "panorama", "hugin", "gaussian-splatting", "photos", "self-hosted"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics",
+]
+dependencies = [
+    "numpy>=1.26",
+    "opencv-contrib-python>=4.10",
+    "Pillow>=10.0",
+    "pi-heif>=0.18",
+    "platformdirs>=4.0",
+    "psutil>=5.9",
+    "rawpy>=0.21",
+    "tqdm>=4.66",
+    "watchdog>=4.0",
+]
+
+[project.optional-dependencies]
+fill = ["torch>=2.2"]
+group = ["mediapipe>=0.10.30"]
+jxl = ["pillow-jxl-plugin>=1.3"]
+
+[project.scripts]
+fuseshot = "fuseshot.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/bearjcc/fuseshot"
+Issues = "https://github.com/bearjcc/fuseshot/issues"
+Changelog = "https://github.com/bearjcc/fuseshot/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "fuseshot/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["fuseshot", "tests", "LICENSE", "THIRD_PARTY.md", "README.md", "CHANGELOG.md",
+           "fuseshot.example.toml", "sites.example.json"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E9", "F", "W", "B"]
+ignore = ["B007", "B008", "B023", "B905"]

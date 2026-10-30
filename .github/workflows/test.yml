@@ -1,0 +1,50 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Hugin, so the stitching test runs too
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends hugin-tools enblend enfuse
+      - run: uv sync --locked
+      - run: uv run ruff check fuseshot tests
+      - name: A browser for the review page test
+        run: uv run --with playwright playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
+      - run: uv run --with playwright pytest -q
+
+  clean-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - name: Build and install the wheel into an empty venv
+        run: |
+          uv build --wheel
+          uv venv /tmp/clean
+          uv pip install --python /tmp/clean ./dist/*.whl
+      - name: Smoke test
+        env:
+          FUSESHOT_HOME: /tmp/fuseshot-home
+        run: |
+          /tmp/clean/bin/fuseshot --version
+          /tmp/clean/bin/fuseshot doctor
+          /tmp/clean/bin/fuseshot fetch-assets viewer
+          /tmp/clean/bin/fuseshot doctor --json | python -c "import json,sys; d=json.load(sys.stdin); assert any(c['name']=='viewer' and c['state']=='ok' for c in d['checks']), d"

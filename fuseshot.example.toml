@@ -1,0 +1,47 @@
+# Copy to fuseshot.toml in Fuseshot's home folder (fuseshot doctor shows where)
+# and edit. Options on the command line win over this file.
+
+# Where approved results are copied. Must not be inside a source folder.
+# Leave it out to use Pictures/Fuseshot in your user folder.
+# output = '~/Pictures/Fuseshot'
+
+# Leave out [[sources]] altogether to use Immich alone.
+[[sources]]
+type = "immich"
+# url = "http://127.0.0.1:2283"
+# key_file = '~/.config/fuseshot/immich_key'
+
+# [[sources]]
+# type = "folder"
+# path = '~/Pictures/Camera'
+# recursive = true
+
+# Upload approved results from Immich sets back to Immich as new photos.
+# Off unless set; the key then needs asset.upload too (and album.read,
+# album.create and albumAsset.create for the album). Originals are never changed.
+# [upload]
+# immich = true
+# album = "Fuseshot"             # "" for no album
+
+# Outside programs, if they are not on PATH. A program or the folder holding it.
+# [tools]
+# hugin = 'C:\Program Files\Hugin\bin'
+# colmap = '~/apps/colmap/bin'
+# brush = '~/apps/brush'
+
+# Models you already have, instead of downloading them.
+# [models]
+# big-lama = '~/models/big-lama.pt'
+
+# How long jobs (stitching chunks, AI fill, group merges, splats) are run.
+# [jobs]
+# runner = "local"               # or "pueue" to send them to a Pueue queue
+# pueue = "pueue"
+# group = "default"
+# label_prefix = "fuseshot:"
+# GPU jobs can go through your own submit command instead. {name}, {label},
+# {workdir} and {command} are filled in; it must print the Pueue task id last.
+# gpu_submit = "my-gpu-queue --label {label} --cwd {workdir} -- {command}"
+# Other Pythons for AI fill and group shots, only if they live in venvs of their own.
+# fill_python = '~/venvs/fuseshot-fill/bin/python'
+# group_python = '~/venvs/fuseshot-group/bin/python'

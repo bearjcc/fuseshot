@@ -1,0 +1,100 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uv build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python
+          path: dist/
+
+  pypi:
+    needs: python
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: python
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked --no-dev
+      - name: Build fuseshot.exe
+        shell: bash
+        run: |
+          echo "from fuseshot.__main__ import main; main()" > fuseshot-app.py
+          uv run --with pyinstaller pyinstaller --noconfirm --name fuseshot --collect-data fuseshot \
+            --collect-all pi_heif fuseshot-app.py
+          cp LICENSE THIRD_PARTY.md README.md dist/fuseshot/
+          dist/fuseshot/fuseshot.exe --version
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/fuseshot -DestinationPath "fuseshot-${{ github.ref_name }}-windows.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: fuseshot-*-windows.zip
+
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  github-release:
+    needs: [python, windows, docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets/
+          merge-multiple: true
+      - name: Checksums
+        run: cd assets && sha256sum * > SHA256SUMS
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: assets/*
+          generate_release_notes: true
