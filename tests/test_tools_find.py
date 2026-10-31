@@ -16,5 +16,5 @@ def test_hugin_found_under_program_files(tmp_path, monkeypatch, home):
     monkeypatch.setattr(os.path, "expandvars", ntpath.expandvars)
     monkeypatch.setenv("ProgramW6432", str(tmp_path / "Programs").replace("/", "\\"))
     monkeypatch.setattr(tools, "_program_in", lambda folder, p: (bin_dir / p) if str(folder).replace("\\", "/").endswith(
-        "Programs/Hugin/bin") and (bin_dir / p).exists() else None)
+        "Programs/Hugin/bin") and (bin_dir / (p + tools.EXE)).exists() else None)
     assert tools.find("hugin") == bin_dir / "nona"

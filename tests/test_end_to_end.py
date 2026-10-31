@@ -107,17 +107,22 @@ def test_kept_panorama_is_full_size_with_the_first_frames_exif(home, photos, mon
     preview = Image.open(home / "work" / SET / record["preview_file"]).size
     with Image.open(written) as img:
         size, exif = img.size, img.getexif()
-    assert size != preview and preview[0] == 3000  # the review copy is 3000 px; the kept one is not
+    # the review copy is 3000 px wide (give or take the rounding of the Hugin version); the kept one is not
+    assert size != preview and abs(preview[0] - 3000) <= 10
     assert exif.get_ifd(0x8769)[0x9003] == "2024:03:09 14:00:00"
     assert (exif[0x010F], exif[0x0110]) == ("Example", "Camera")
 
     # a cap makes it smaller, and the same picture
     monkeypatch.setattr(limits, "MAX_MEGAPIXELS", 1)
     full = home / "work" / SET / "full"
+    whole = next(f for f in full.glob("*.jpg") if not f.stem.endswith("_crop"))
+    before = Image.open(whole).size
     for f in full.glob("*.jpg"):
         f.unlink()
     written.unlink()
     [written] = export(page, out)
     with Image.open(written) as img:
         assert img.width * img.height <= 1_010_000  # nona rounds the canvas to whole pixels
-        assert abs(img.width / img.height - size[0] / size[1]) < 0.02
+    # Hugin works out the clean rectangle again at each size, so compare the uncropped view
+    with Image.open(whole) as img:
+        assert img.width < before[0] and abs(img.width / img.height - before[0] / before[1]) < 0.02
