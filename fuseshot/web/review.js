@@ -718,7 +718,7 @@ function renderPanel(item, detail) {
         ${row("magic", esc([verify.verified_type, verify.verified_confidence != null && `confidence ${verify.verified_confidence}`].filter(Boolean).join(", ")), esc(verify.verify_reason))}</div>`;
     }
   }
-  html += `<div class="p-section p-links"><div class="p-label">Open</div>
+  if (item.link || item.href || item.full) html += `<div class="p-section p-links"><div class="p-label">Open</div>
     ${item.link ? `<a href="${esc(item.link)}" target="_blank" rel="noopener">${icon("openInNew")}In Immich</a>` : ""}
     ${item.href ? `<a href="${esc(item.href)}">${icon("pencil")}${item.kind === "stitch" ? "Editor: render, AI fill, alignment" : item.kind === "group" ? "Face choices" : item.kind === "splat" ? "3D viewer" : "Loop page"}</a>` : ""}
     ${item.full ? `<a href="${esc(item.full)}" target="_blank">${icon("image")}Full size image</a>` : ""}</div>`;
