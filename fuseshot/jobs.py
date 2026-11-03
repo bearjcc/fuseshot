@@ -1,4 +1,4 @@
-"""Run slow work (AI fill, group re-merges) away from the review server.
+"""Run slow work (AI fill, group re-merges, stitching) away from the review server.
 
 By default jobs run one at a time on a background thread of the review server.
 They can go to a Pueue queue instead (https://github.com/Nukesor/pueue), set in
@@ -111,7 +111,10 @@ class LocalRunner:
         while True:
             task = self.waiting.get()
             job = self.jobs[task]
-            job["state"] = "running"
+            with self.lock:
+                if job["state"] == "cancelled":
+                    continue
+                job["state"] = "running"
             log_file = config.path("cache", "jobs", f"{job['label']}.log")
             log_file.parent.mkdir(parents=True, exist_ok=True)
             LOG.info("job %s started: %s", task, job["label"])
@@ -135,6 +138,16 @@ class LocalRunner:
             if job["label"] == name and job["state"] in ("queued", "running"):
                 return task, job["state"]
         return None
+
+    def cancel(self, names):
+        """Drop the jobs with these names that have not started; returns their task ids."""
+        dropped = []
+        with self.lock:
+            for task, job in self.jobs.items():
+                if job["label"] in names and job["state"] == "queued":
+                    job["state"] = "cancelled"
+                    dropped.append(task)
+        return dropped
 
 
 class PueueRunner:
@@ -172,6 +185,12 @@ class PueueRunner:
             return {}
 
     @staticmethod
+    def waiting(task):
+        """Queued or stashed: Pueue has not started it."""
+        status = task.get("status")
+        return (next(iter(status)) if isinstance(status, dict) else status) in ("Queued", "Stashed")
+
+    @staticmethod
     def state(task):
         status = task.get("status")
         name = next(iter(status)) if isinstance(status, dict) else status
@@ -190,6 +209,23 @@ class PueueRunner:
             if task.get("label") == self.prefix + name and self.state(task) in ("queued", "running"):
                 return int(key), self.state(task)
         return None
+
+    def cancel(self, names):
+        """Remove the tasks with these names that Pueue has not started; returns their task ids."""
+        labels = {self.prefix + name for name in names}
+        dropped = [int(k) for k, t in self.tasks().items() if t.get("label") in labels and self.waiting(t)]
+        if not dropped:
+            return []
+        try:
+            done = subprocess.run([self.pueue, "remove", *map(str, dropped)], capture_output=True, text=True,
+                                  timeout=20)
+        except (OSError, subprocess.SubprocessError) as err:
+            LOG.warning("could not take tasks %s off the queue: %s", dropped, err)
+            return []
+        if done.returncode != 0:
+            LOG.warning("pueue remove %s: %s", dropped, (done.stderr or done.stdout).strip()[-300:])
+        left = self.tasks()
+        return [task for task in dropped if str(task) not in left]
 
 
 _runner = None
