@@ -131,3 +131,77 @@ def test_a_set_discarded_while_stitching_comes_back_discarded(review):
     review.decide({"set": "P4", "kind": "stitch", "decision": "kept"})
     item = next(i for i in review.items()["items"] if i["key"] == "stitch:P4")
     assert item["decision"] == "kept"
+
+
+def kinds(tmp_path, cands, actions=None, groups=None, types=None):
+    work, out = tmp_path / "work", tmp_path / "output"
+    work.mkdir()
+    out.mkdir()
+    (out / "candidates.json").write_text(json.dumps({"candidates": cands}))
+    if actions:
+        (out / "actions.json").write_text(json.dumps({"sets": actions}))
+    if groups:
+        (out / "groups.json").write_text(json.dumps({"sets": groups}))
+    if types:
+        (work / "types.json").write_text(json.dumps(types))
+    return Review(work, out / "candidates.json")
+
+
+def labels(review):
+    return {k: (i["type"], i["checked"]) for k, i in found_items(review).items()}
+
+
+def test_a_found_card_names_the_type_the_classifier_gives(tmp_path):
+    review = kinds(tmp_path, [
+        candidate("A1", guessed_type="single-row rotation"),
+        candidate("G1", guessed_type="single-row rotation"),
+        candidate("S1", guessed_type="multi-row grid"),
+        candidate("V1", guessed_type="single-row rotation", verified_type="multi-row grid (+ bracket)"),
+        candidate("N1", guessed_type="single-row rotation", verified_type="not a panorama"),
+    ], actions={"A1": {"action": True}}, groups={"G1": {"group": True}}, types={"S1": {"type": "object scan"}})
+    (review.work_dir / "batch_plan.json").write_text(json.dumps({"jobs": [{"key": "V1", "set_id": "V1"}]}))
+    assert labels(review) == {"A1": ("action loop", True), "G1": ("group photo", True), "S1": ("splat", True),
+                              "V1": ("multi-row grid", True)}
+    # A set the overlap check turned down leaves the found list; its name still matches.
+    n1 = {c["set_id"]: c for c in review.candidates()}["N1"]
+    assert review.found.what("N1", n1, review.actions(), {}) == ("not a panorama", True)
+
+
+def test_before_the_checks_a_frame_count_guess_is_not_shown_as_a_panorama_type(tmp_path):
+    review = kinds(tmp_path, [
+        candidate("R1", guessed_type="single-row rotation"),
+        candidate("M1", guessed_type="multi-row grid"),
+        candidate("B1", guessed_type="exposure bracket"),
+        candidate("W1", guessed_type="linear walk"),
+    ])
+    assert labels(review) == {"R1": ("set", False), "M1": ("set", False),
+                              "B1": ("exposure bracket", False), "W1": ("linear walk", False)}
+
+
+def put_thumbs(review, c, images):
+    from fuseshot.found import strip_frames
+
+    for i, img in zip(strip_frames(len(c["asset_ids"])), images):
+        asset_id = c["asset_ids"][i]
+        path = review.cache_dir / "found" / asset_id[:2] / f"{asset_id}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(img[:, :, ::-1]).save(path, quality=90)
+
+
+def test_the_card_frames_give_a_cheap_guess_once_their_thumbnails_are_here(tmp_path):
+    import cv2
+
+    from conftest import scene
+
+    quick = {"guessed_type": "single-row rotation", "median_gap_s": 0.5, "span_s": 3}
+    fixed, turned = candidate("F1", **quick), candidate("T1", **quick)
+    review = kinds(tmp_path, [fixed, turned])
+    assert labels(review) == {"F1": ("set", False), "T1": ("set", False)}
+
+    wide = scene(width=1200, height=240)
+    still = wide[:, :320].copy()
+    moved = still.copy()
+    cv2.rectangle(moved, (60, 40), (170, 200), (20, 220, 240), -1)  # something crosses the frame
+    put_thumbs(review, fixed, [still, moved, still, moved])
+    put_thumbs(review, turned, [wide[:, x:x + 320] for x in (0, 120, 240, 360)])  # the camera turned
+    assert labels(review) == {"F1": ("action loop", False), "T1": ("panorama", False)}

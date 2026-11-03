@@ -1711,7 +1711,7 @@ class Review:
         group_checks = self.groups()
         found += [self.group_item(k, decisions, candidates, group_checks) for k in self.merges()]
         found += [self.loop_item(k, decisions, candidates, actions) for k in loops]
-        found = self.found.carry(found, decisions) + self.found.items(candidates, decisions)
+        found = self.found.carry(found, decisions) + self.found.items(candidates, decisions, actions, types)
         for row in self.splat_plan().get("sets", []):
             if self.splat_records(row["set_id"])[1].get("steps"):
                 found.append(self.splat_item(row, decisions, candidates))

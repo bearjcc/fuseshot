@@ -27,6 +27,36 @@ def strip_frames(count, n=STRIP):
     return sorted({round(i * (count - 1) / (n - 1)) for i in range(n)})
 
 
+# What the full pipeline makes of each detected type, as the found card names it.
+LABELS = {"action": "action loop", "group": "group photo", "object scan": "splat", "not": "not a panorama"}
+# Metadata guesses that rest on something measured (exposure, GPS, focal length). The
+# others only count frames, and a burst from a still camera looks the same.
+MEASURED_GUESSES = ("exposure bracket", "linear walk", "multi-zoom layered")
+NEUTRAL = "set"
+
+
+def small_homography(first, second, need=20):
+    """Homography between two small frames, or None. SIFT finds enough points on a
+    thumbnail where ORB does not."""
+    import cv2
+    import numpy as np
+
+    sift = cv2.SIFT_create(800)
+    k1, d1 = sift.detectAndCompute(first, None)
+    k2, d2 = sift.detectAndCompute(second, None)
+    if d1 is None or d2 is None or len(k1) < 2 or len(k2) < 2:
+        return None
+    good = [m[0] for m in cv2.BFMatcher().knnMatch(d1, d2, k=2) if len(m) == 2 and m[0].distance < 0.75 * m[1].distance]
+    if len(good) < need:
+        return None
+    p1 = np.float32([k1[m.queryIdx].pt for m in good])
+    p2 = np.float32([k2[m.trainIdx].pt for m in good])
+    H, mask = cv2.findHomography(p1, p2, cv2.RANSAC, 4.0)
+    if H is None or mask is None or mask.sum() < need or mask.sum() < 0.35 * len(good):
+        return None
+    return H
+
+
 def base_type(c):
     return (c.get("verified_type") or "").split(" (+")[0]
 
@@ -50,6 +80,7 @@ class Found:
         self.thumbs = review.cache_dir / "found"
         self.slots = threading.BoundedSemaphore(2)
         self.threads = []
+        self.guesses = {}
 
     def plan_keys(self):
         """The stitch plan's keys for each set it holds."""
@@ -72,16 +103,74 @@ class Found:
             return None
         return "stitching" if any((work / k).is_dir() for k in keys) else "queued"
 
-    def items(self, candidates, decisions):
+    def items(self, candidates, decisions, actions=None, types=None):
         plan = self.plan_keys()
         out = []
         for set_id, c in candidates.items():
             state = self.status(c, plan.get(set_id))
             if state:
-                out.append(self.item(set_id, c, state, decisions))
+                label, checked = self.what(set_id, c, actions or {}, types or {})
+                out.append(self.item(set_id, c, state, decisions, label, checked))
         return out
 
-    def item(self, set_id, c, state, decisions):
+    def what(self, set_id, c, actions, types):
+        """The set's type as the classifier names it, and whether that is the checked
+        answer: a type picked on the page, a group or action found by their scans, or
+        the overlap check's verdict. Before those, a cheap guess, or just "set"."""
+        review = self.review
+        chosen = (types.get(set_id) or {}).get("type")
+        group = (review.groups().get(set_id) or {}).get("group")
+        action = (actions.get(set_id) or {}).get("action")
+        if chosen or group or action or "verified_type" in c:
+            detected = chosen or review.detected_type(set_id, c, actions)
+            return (LABELS.get(detected) or base_type(c) or "panorama"), True
+        return self.guess(set_id, c), False
+
+    def guess(self, set_id, c):
+        guessed = c.get("guessed_type") or ""
+        measured = next((g for g in MEASURED_GUESSES if guessed.startswith(g)), None)
+        if measured:
+            return measured
+        if set_id not in self.guesses:
+            looked = self.look(c)
+            if looked is None:
+                return NEUTRAL
+            self.guesses[set_id] = looked
+        return self.guesses[set_id]
+
+    def look(self, c):
+        """A guess from the frames on the card, once their thumbnails are here: a still
+        camera with something moving is an action shot, a camera that turned is a
+        panorama. None while a thumbnail is missing."""
+        import cv2
+
+        from . import action
+
+        ids = c.get("asset_ids") or []
+        paths = [self.thumbs / ids[i][:2] / f"{ids[i]}.jpg" for i in strip_frames(len(ids))]
+        if len(paths) < 2:
+            return NEUTRAL
+        if not all(p.exists() for p in paths):
+            return None
+        frames = [cv2.imread(str(p), cv2.IMREAD_GRAYSCALE) for p in paths]
+        quick = ((c.get("median_gap_s") or 0) <= action.MAX_MEDIAN_GAP_S
+                 and (c.get("span_s") or 0) <= action.MAX_SPAN_S and len(ids) >= action.MIN_RUN)
+        for first, second in zip(frames, frames[1:]):
+            if first is None or second is None or first.shape != second.shape:
+                continue
+            first, second = (cv2.resize(f, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC) for f in (first, second))
+            H = small_homography(first, second)
+            if H is None:
+                continue
+            if action.corner_shift(H, first.shape[::-1]) > action.MAX_SHIFT:
+                return "panorama"
+            moving = action.moving_share(first, second, H)
+            if quick and moving is not None and moving >= action.MIN_MEDIAN_MOVING:
+                return LABELS["action"]
+            return NEUTRAL
+        return NEUTRAL
+
+    def item(self, set_id, c, state, decisions, label=NEUTRAL, checked=False):
         from .review import library_fields
 
         count = len(c.get("asset_ids") or [])
@@ -93,8 +182,7 @@ class Found:
         return {
             "key": f"{KIND}:{set_id}", "kind": KIND, "id": set_id, "href": None,
             "thumb": strip[0] if strip else None, "strip": strip, "screen": None, "full": None,
-            "w": 4, "h": 3, "type": base_type(c) or c.get("guessed_type") or "panorama",
-            "guess": c.get("guessed_type"), "checked": "verified_type" in c, "confidence": confidence,
+            "w": 4, "h": 3, "type": label, "checked": checked, "confidence": confidence,
             "frames": count, "taken": c.get("start_local"), "camera": c.get("camera"), "place": c.get("places"),
             "link": c.get("best_link") or c.get("first_link"), **library_fields(c),
             "status": state, "flags": flags, "score": 0,

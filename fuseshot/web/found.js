@@ -42,7 +42,8 @@ export function scrubFound(grid) {
 
 export function foundWhat(item) {
   const sure = item.confidence != null ? `, ${Math.round(item.confidence * 100)}% sure` : "";
-  return item.checked ? `${item.type}${sure}` : `looks like a ${item.guess || item.type}${sure}, not checked yet`;
+  if (item.checked) return `${item.type}${sure}`;
+  return item.type === "set" ? "not checked yet" : `looks like ${/^[aeiou]/.test(item.type) ? "an" : "a"} ${item.type}, not checked yet`;
 }
 
 export function foundStage(item, { icon, esc }) {
@@ -70,5 +71,5 @@ export function listen(base, { refresh, apply }) {
 
 export function foundBadge(item, { icon, esc }) {
   const [label, ic] = STATUS[item.status] || STATUS.found;
-  return `<span class="bl found ${item.status}">${icon(ic)}<span>${label}</span><span class="what">·&nbsp;${esc(item.checked ? item.type : item.guess || item.type)}</span></span>`;
+  return `<span class="bl found ${item.status}">${icon(ic)}<span>${label}</span><span class="what">·&nbsp;${esc(item.type)}</span></span>`;
 }
