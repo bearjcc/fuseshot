@@ -1,6 +1,8 @@
 """Stitch previews for many verified sets, one set at a time, in resumable chunks.
 
-The plan lists one job per stitchable sub-set, best first. Each job records its
+The plan lists one job per stitchable sub-set, most likely to work out first, so
+sets discarded on the review page while they wait are mostly the doubtful ones.
+Discards are read again just before each set starts. Each job records its
 result in work/<key>/batch.json, so a chunk that is stopped or paused picks up
 at the first job without a result. Creating work/batch.stop ends a chunk at the
 next set boundary.
@@ -63,9 +65,13 @@ def make_plan(verified_file, candidates_file, min_confidence, exclude):
                 "taken": candidates[set_id].get("start_local"),
                 "camera": candidates[set_id].get("camera"),
             })
-    # brackets first so exposure fusion is exercised early, then best quality first
-    jobs.sort(key=lambda j: (j["type"] != "bracket", -j["quality"], j["key"]))
+    jobs.sort(key=lambda j: (-j["confidence"], -j["quality"], j["key"]))
     return jobs
+
+
+def left_out(work, job):
+    """Whether the review page discarded this job's result, or its whole set while it was found."""
+    return job["key"] in discarded(work) or job.get("set_id", job["key"]) in discarded(work, "found")
 
 
 def save_plan(jobs, plan_file, chunk_size):
@@ -444,21 +450,20 @@ def run_chunk(immich, plan_file, chunk, work, db_file, retry_failed=False, max_m
     os.environ["FUSESHOT_MAX_MB"] = str(max_mb or limits.tool_mb())
     tools.require("hugin")  # before any set is marked failed for want of it
     stop_file = Path(work) / "batch.stop"
-    skipped = discarded(work)
     t0 = time.time()
     earlier = Counter()
     for n, key in enumerate(keys, 1):
         if stop_file.exists():
             LOG.info(f"stop file found, ending before {key}")
             break
-        if key in skipped:
+        job = jobs[key]
+        if left_out(work, job):
             earlier["discarded on the review page"] += 1
             continue
         old = load_record(work, key)
         if old and old.get("status") in DONE and not (retry_failed and old["status"] == "failed"):
             earlier[f"already {old['status']}"] += 1
             continue
-        job = jobs[key]
         LOG.info(f"[{n}/{len(keys)}] {key}: {job['type']}, {len(job['frames'])} frames")
         record = run_job(immich, job, work, db_file)
         note = record.get("error") or f"{record.get('model')} {record.get('error_px')} px, {record.get('projection')}"
