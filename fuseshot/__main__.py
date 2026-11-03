@@ -333,7 +333,7 @@ def cmd_review(args):
         upload_to, album = immich.client(), upload.settings()["album"]
     serve(args.work, args.host, args.port, candidates_file=args.candidates, base_path=args.base_path,
           cache_dir=args.cache, redirect_from=args.redirect_from, output_dir=output, token=args.token,
-          open_browser=args.open, upload_to=upload_to, album=album)
+          open_browser=args.open, upload_to=upload_to, album=album, library=sources.Library(found, args.db))
 
 
 def cmd_watch(args):
@@ -368,7 +368,7 @@ def cmd_export(args):
     libraries = ("folder", "immich") if args.immich else ("folder",)
     written = export(review, output, dry_run=args.dry_run, libraries=libraries)
     kept = sum(1 for item in review.items()["items"]
-               if item.get("library") in libraries and item.get("decision") == "kept")
+               if item.get("library") in libraries and item.get("decision") == "kept" and item["kind"] != "found")
     there = f" ({kept - len(written)} already there)" if kept > len(written) else ""
     print(f"{len(written)} file(s) {'would be ' if args.dry_run else ''}copied to {output}{there}")
 

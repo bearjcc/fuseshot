@@ -38,6 +38,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from . import assets, jobs, log, stitch, tools
 from .files import write_atomic
+from .found import Found
 
 LOG = log.get(__name__)
 
@@ -75,7 +76,7 @@ SPLAT_FILES = {"scene.splat": "application/octet-stream"}
 WEB_DIR = Path(__file__).resolve().parent / "web"
 WEB_FILES = {"review.css": "text/css; charset=utf-8", "review.js": "text/javascript; charset=utf-8",
              "icons.js": "text/javascript; charset=utf-8"}
-KINDS = ("stitch", "group", "action", "splat")
+KINDS = ("stitch", "group", "action", "splat", "found")
 
 
 def normalise_base(base):
@@ -706,7 +707,7 @@ def library_fields(c):
 
 
 class Review:
-    def __init__(self, work_dir, candidates_file=None, base_path="", cache_dir=None, output_dir=None):
+    def __init__(self, work_dir, candidates_file=None, base_path="", cache_dir=None, output_dir=None, library=None):
         self.work_dir = Path(work_dir)
         self.output_dir = Path(output_dir) if output_dir else None
         self.base = normalise_base(base_path)
@@ -726,6 +727,7 @@ class Review:
         self.export_lock = threading.Lock()
         self.uploader = None
         self.sizes_cache = {}
+        self.found = Found(self, library)
 
     def candidates(self):
         """Candidate sets, then the burst-mode runs kept beside them for the action check."""
@@ -962,8 +964,10 @@ class Review:
 
     def decide(self, body):
         set_id = body.get("set")
-        kind = body.get("kind") if body.get("kind") in ("action", "splat", "group") else "stitch"
-        if kind == "action":
+        kind = body.get("kind") if body.get("kind") in KINDS else "stitch"
+        if kind == "found":
+            self.found.check(set_id)
+        elif kind == "action":
             self.loop_dir(set_id)
         elif kind == "group":
             self.group_dir(set_id)
@@ -986,9 +990,18 @@ class Review:
             data = self.decisions()
             data.setdefault(set_id, []).append(record)
             write_atomic(self.decisions_file, json.dumps(data, indent=2))
-        if decision == "kept":
-            self.export_later({f"{kind}:{set_id}"})
+        self.after_decisions([(set_id, record)])
         return record
+
+    def after_decisions(self, records):
+        """Export what was kept, and take sets discarded while found off the stitching queue."""
+        kept = {f"{r.get('kind', 'stitch')}:{s}" for s, r in records
+                if r["decision"] == "kept" and r.get("kind") != "found"}
+        if kept:
+            self.export_later(kept)
+        dropped = [s for s, r in records if r.get("kind") == "found" and r["decision"] == "discarded"]
+        if dropped:
+            self.found.discarded(dropped)
 
     def export_later(self, keys):
         """Copy kept folder results to the output folder, and upload kept Immich
@@ -1696,6 +1709,7 @@ class Review:
         group_checks = self.groups()
         found += [self.group_item(k, decisions, candidates, group_checks) for k in self.merges()]
         found += [self.loop_item(k, decisions, candidates, actions) for k in loops]
+        found += self.found.items(candidates, decisions)
         for row in self.splat_plan().get("sets", []):
             if self.splat_records(row["set_id"])[1].get("steps"):
                 found.append(self.splat_item(row, decisions, candidates))
@@ -1845,7 +1859,8 @@ class Review:
         for entry in entries:
             set_id = entry.get("set")
             kind = entry.get("kind") if entry.get("kind") in KINDS else "stitch"
-            {"action": self.loop_dir, "group": self.group_dir, "splat": self.splat_dir}.get(kind, self.set_dir)(set_id)
+            {"action": self.loop_dir, "group": self.group_dir, "splat": self.splat_dir,
+             "found": self.found.check}.get(kind, self.set_dir)(set_id)
             decision = decision_name(entry.get("decision"))
             at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             note = str(entry.get("note") or "")[:500]
@@ -1861,9 +1876,7 @@ class Review:
             for set_id, record in records:
                 data.setdefault(set_id, []).append(record)
             write_atomic(self.decisions_file, json.dumps(data, indent=2))
-        kept = {f"{r.get('kind', 'stitch')}:{s}" for s, r in records if r["decision"] == "kept"}
-        if kept:
-            self.export_later(kept)
+        self.after_decisions(records)
         return {"records": [{"set": s, "kind": r.get("kind", "stitch"), **r} for s, r in records]}
 
     def undo(self, body):
@@ -2112,6 +2125,8 @@ def make_handler(review, redirect_from=(), token=None):
                     found = {"frame": review.frame_file, "before": review.before_file,
                              "previous": review.previous_file}[parts[0]](parts[1], parts[2], q.get("size"))
                     return self.send_file(found, parts[0] == "frame" or "v" in q)
+                elif parts[0] == "found" and len(parts) == 3:
+                    return self.send_file(review.found.thumb_file(parts[1], parts[2]), True)
                 elif parts[0] == "set" and len(parts) == 2:
                     return self.send(200, review.set_page(parts[1]))
                 elif parts[0] == "img" and len(parts) == 3:
@@ -2183,11 +2198,13 @@ def make_handler(review, redirect_from=(), token=None):
 
 
 def serve(work_dir, host="127.0.0.1", port=8765, candidates_file=None, base_path="", cache_dir=None,
-          redirect_from=(), output_dir=None, token=None, open_browser=False, upload_to=None, album=None):
+          redirect_from=(), output_dir=None, token=None, open_browser=False, upload_to=None, album=None,
+          library=None):
     """Serve the review page. Anyone who can reach it can keep and discard, so on anything but
     this computer it asks for a token, made up here when none is given. With upload_to (an Immich
-    client), kept Immich results are uploaded to it."""
-    review = Review(work_dir, candidates_file, base_path, cache_dir, output_dir)
+    client), kept Immich results are uploaded to it. The library (sources.Library) gives the
+    thumbnails of sets found but not stitched yet."""
+    review = Review(work_dir, candidates_file, base_path, cache_dir, output_dir, library)
     review.migrate()
     if upload_to is not None:
         from .upload import Uploader

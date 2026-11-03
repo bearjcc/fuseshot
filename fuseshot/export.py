@@ -82,7 +82,7 @@ def export(review, output, keys=None, log=LOG.info, dry_run=False, libraries=("f
     decisions = review.decisions()
     written = []
     for item in review.items()["items"]:
-        if item.get("library") not in libraries or item.get("decision") != "kept":
+        if item.get("library") not in libraries or item.get("decision") != "kept" or item["kind"] not in KIND_WORDS:
             continue
         if keys is not None and item["key"] not in keys:
             continue
