@@ -39,6 +39,8 @@ type = "immich"
 # pueue = "pueue"
 # group = "default"
 # label_prefix = "fuseshot:"
+# With Pueue, `run` queues one stitching task per set, this many at a time.
+# stitch_window = 2
 # GPU jobs can go through your own submit command instead. {name}, {label},
 # {workdir} and {command} are filled in; it must print the Pueue task id last.
 # gpu_submit = "my-gpu-queue --label {label} --cwd {workdir} -- {command}"

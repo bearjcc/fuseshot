@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, cache, config, limits, log, sources
+from . import __version__, cache, config, jobs, limits, log, sources
 from .immich import ImmichError
 from .files import write_atomic
 
@@ -399,6 +399,19 @@ def cmd_init(args):
     firstrun.run(args)
 
 
+def stitch_queued(args, bar):
+    """Stitch the plan as one queued job per set; args are those of the `batch --plan` step."""
+    from . import feed
+
+    options = feed.child_options(args)
+
+    def make_args(key):
+        return feed.batch_args(options, key, args.plan_file, args.work, args.candidates)
+
+    window = jobs.settings().get("stitch_window", feed.WINDOW)
+    feed.Feeder(jobs.runner(), args.plan_file, args.work, make_args, window, on_done=bar.update).run()
+
+
 def cmd_run(args):
     """The usual pass over a library: sync, detect, verify, then stitch previews of what checked out."""
     def step(name, *extra):
@@ -442,7 +455,8 @@ def cmd_run(args):
     detected = step("detect", "--keep-verified", *dates)
     step("verify")
     if not args.no_stitch:
-        plan = step("batch", "--plan", "--min-confidence", str(args.min_confidence)).plan_file
+        planned = step("batch", "--plan", "--min-confidence", str(args.min_confidence))
+        plan = planned.plan_file
         chunks = [] if args.dry_run else json.loads(plan.read_text(encoding="utf-8"))["chunks"]
         if not args.dry_run and not chunks:
             explain.report(explain.nothing_to_stitch(detected.out / "candidates.json", plan, detected.min_shots))
@@ -451,9 +465,13 @@ def cmd_run(args):
         from .progress import Progress
 
         with Progress("stitching", sum(len(c) for c in chunks), unit="sets") as bar:
-            for number, chunk in enumerate(chunks):
-                step("batch", "--chunk", str(number))
-                bar.update(len(chunk))
+            if chunks and jobs.settings().get("runner") == "pueue":
+                LOG.info("== batch --sets KEY, one Pueue task per set")
+                stitch_queued(planned, bar)
+            else:
+                for number, chunk in enumerate(chunks):
+                    step("batch", "--chunk", str(number))
+                    bar.update(len(chunk))
     if not args.no_loops:
         step("action", "--scan")
         step("action")

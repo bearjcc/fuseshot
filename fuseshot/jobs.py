@@ -13,6 +13,8 @@ the [jobs] table of the settings file:
     # gets {name}, {label}, {workdir} and {command}, and must print the Pueue
     # task id on its last line.
     # gpu_submit = "..."
+    # Sets `run` keeps queued for stitching at a time when the runner is pueue.
+    # stitch_window = 2
     # Pythons that have the fill (torch) and group (mediapipe) extras, if they
     # are not this one.
     # fill_python = "..."
