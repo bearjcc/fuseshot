@@ -88,7 +88,8 @@ def run(work, key, projection, orientation, model=None, fill=False, plan=None, p
         info = stitch.render(set_dir, projection, orientation)
         name = stitch.preview_name(projection, orientation)
         record.update({"projection": projection, "orientation": orientation, "preview": info.get("size"),
-                       "crop": info.get("crop_size"), "preview_file": f"previews/{name}.jpg", "edited": now()})
+                       "crop": info.get("crop_size"), "crop_rect": info.get("crop_rect"),
+                       "preview_file": f"previews/{name}.jpg", "edited": now()})
         write_atomic(set_dir / "batch.json", json.dumps(record, indent=1))
         if fill:
             result["fill_task"] = queue_fill(work, key, name)

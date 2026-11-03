@@ -140,7 +140,7 @@ def render_preview(set_dir, record, fuse):
     info = render(set_dir, projection, orientation, width=3000, fuse=fuse)
     name = projection if orientation == "level" else f"{projection}-{orientation}"
     record.update({"coverage": [hfov, vfov], "projection": projection, "orientation": orientation,
-                   "preview": info["size"], "crop": info["crop_size"], "fused_stacks": info["fused_stacks"],
+                   "preview": info["size"], "crop": info["crop_size"], "crop_rect": info["crop_rect"], "fused_stacks": info["fused_stacks"],
                    "preview_file": f"previews/{name}.jpg"})
     return info
 

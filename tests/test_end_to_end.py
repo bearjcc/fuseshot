@@ -103,8 +103,11 @@ def test_kept_panorama_is_full_size_with_the_first_frames_exif(home, photos, mon
     full_crop = next((home / "work" / SET / "full").glob("*_crop.jpg"))
     with Image.open(written) as img, Image.open(full_crop) as crop:
         assert img.size == crop.size  # cut to fit unless the whole canvas was picked
+        full_shape = crop.width / crop.height
     record = json.loads((home / "work" / SET / "batch.json").read_text(encoding="utf-8"))
     preview = Image.open(home / "work" / SET / record["preview_file"]).size
+    preview_name = full_crop.stem.removesuffix("_crop")
+    preview_crop = Image.open(home / "work" / SET / "previews" / full_crop.name).size
     with Image.open(written) as img:
         size, exif = img.size, img.getexif()
     # the review copy is 3000 px wide (give or take the rounding of the Hugin version); the kept one is not
@@ -123,6 +126,12 @@ def test_kept_panorama_is_full_size_with_the_first_frames_exif(home, photos, mon
     [written] = export(page, out)
     with Image.open(written) as img:
         assert img.width * img.height <= 1_010_000  # nona rounds the canvas to whole pixels
-    # Hugin works out the clean rectangle again at each size, so compare the uncropped view
     with Image.open(whole) as img:
         assert img.width < before[0] and abs(img.width / img.height - before[0] / before[1]) < 0.02
+    # the clean rectangle was worked out once, for the preview, and is cut the same at every size
+    assert record["crop_rect"] == json.loads((home / "work" / SET / "previews" / "renders.json")
+                                             .read_text(encoding="utf-8"))[preview_name]["crop_rect"]
+    capped_crop = next(full.glob("*_crop.jpg"))
+    with Image.open(capped_crop) as small:
+        shapes = [small.width / small.height, full_shape, preview_crop[0] / preview_crop[1]]
+    assert max(shapes) - min(shapes) < 0.01 * max(shapes), shapes

@@ -820,6 +820,27 @@ def preview_name(projection, orientation):
     return f'{projection}-{orientation}'
 
 
+def crop_rect(outer, inner):
+    """The clean rectangle as shares (x0, y0, x1, y1) of the uncropped panorama, so the
+    crop worked out once can be cut from a render of any size. Both boxes are Hugin
+    crops: (left, right, top, bottom) on the canvas."""
+    left, right, top, bottom = outer
+    width, height = max(1, right - left), max(1, bottom - top)
+    shares = ((inner[0] - left) / width, (inner[2] - top) / height,
+              (inner[1] - left) / width, (inner[3] - top) / height)
+    return [round(min(1.0, max(0.0, x)), 6) for x in shares]
+
+
+def crop_pixels(rect, outer):
+    """A stored clean rectangle on a canvas whose uncropped panorama is outer, as a
+    Hugin crop (left, right, top, bottom)."""
+    left, right, top, bottom = outer
+    width, height = right - left, bottom - top
+    x0, y0, x1, y1 = rect
+    return (left + round(x0 * width), left + round(x1 * width),
+            top + round(y0 * height), top + round(y1 * height))
+
+
 def render_full(set_dir, name, log=None):
     """Render a reviewed view again at the photos' own resolution, as far as the
     memory budget and the megapixel cap allow, into full/<name>.jpg and
@@ -839,6 +860,7 @@ def render_full(set_dir, name, log=None):
     renders_file = set_dir / 'previews' / 'renders.json'
     renders = json.loads(renders_file.read_text(encoding='utf-8')) if renders_file.exists() else {}
     fuse = (renders.get(name) or {}).get('fused_stacks') is not None
+    rect = (renders.get(name) or {}).get('crop_rect')
     tmp = set_dir / 'full_tmp'
     if tmp.exists():
         shutil.rmtree(tmp)
@@ -847,10 +869,10 @@ def render_full(set_dir, name, log=None):
     if log:
         log(f'{set_dir.name}: making {name} at full size, which can take several minutes')
     with Progress(f'full-size render of {set_dir.name}', total=4, unit='steps', every=1.0) as shown:
-        return _render_full(set_dir, name, source, out_dir, done, fuse, orientation, tmp, shown, log)
+        return _render_full(set_dir, name, source, out_dir, done, fuse, orientation, tmp, shown, log, rect)
 
 
-def _render_full(set_dir, name, source, out_dir, done, fuse, orientation, tmp, shown, log):
+def _render_full(set_dir, name, source, out_dir, done, fuse, orientation, tmp, shown, log, rect=None):
     from . import limits
 
     def step(what=None):
@@ -871,9 +893,13 @@ def _render_full(set_dir, name, source, out_dir, done, fuse, orientation, tmp, s
     canvas_w, canvas_h = max(1, round(p['w'] * scale)), max(1, round(p['h'] * scale))
     run('pano_modify', f'--canvas={canvas_w}x{canvas_h}', '--crop=AUTOOUTSIDE', '-o', work, work)
     outer = pano_line(work)['crop']
-    inside = tmp / 'inside.pto'
-    run('pano_modify', '--crop=AUTO', '-o', inside, work)
-    inner = pano_line(inside)['crop']
+    if rect:
+        # the preview's clean rectangle, so every size is cut to the same shape
+        inner = crop_pixels(rect, outer)
+    else:
+        inside = tmp / 'inside.pto'
+        run('pano_modify', '--crop=AUTO', '-o', inside, work)
+        inner = pano_line(inside)['crop']
     step(f'{canvas_w} x {canvas_h} canvas')
     nona_args = ['--ignore-exposure'] if fuse else []
     run('nona', *nona_args, '-m', 'TIFF_m', '-o', tmp / 'layer', work)
@@ -1115,6 +1141,7 @@ def render(set_dir, projection, orientation='level', width=3000,
         'orientation': orientation,
         'size': list(flat.size),
         'crop_size': list(cropped.size),
+        'crop_rect': crop_rect(outer, inner),
         'fov': p['v'],
         'fused_stacks': stack_count,
         'blender': blender,

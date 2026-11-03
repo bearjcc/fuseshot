@@ -1735,6 +1735,11 @@ class Review:
             return None
         return {k: state.get(k) for k in ("stage", "done", "total", "unit", "seconds_left")}
 
+    def crop_rects(self, set_dir, versions):
+        """The clean rectangle of each view, as shares of the uncropped panorama."""
+        renders = self.read_json(set_dir / "previews" / "renders.json")
+        return {name: (renders.get(name) or {}).get("crop_rect") for name in versions}
+
     def pano_data(self, set_dir, name):
         """Where an equirectangular preview sits on the full sphere, read from the project it was rendered from."""
         pto = set_dir / "previews" / f"{name}.pto"
@@ -1833,6 +1838,7 @@ class Review:
             "versions": versions, "fills": self.fills(key), "preview": self.thumb_name(key),
             "crops": [name for name in versions if (set_dir / "previews" / f"{name}_crop.jpg").exists()],
             "pano": {name: self.pano_data(set_dir, name) for name in versions},
+            "crop_rects": self.crop_rects(set_dir, versions),
             "frames": self.frame_list(key),
             "model_choice": self.overrides().get(key, {}).get("model", "auto"),
             "stitch_plan": c.get("stitch_plan", ""),
