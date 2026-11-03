@@ -37,6 +37,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from . import assets, jobs, log, stitch, tools
+from .events import Changes
 from .files import write_atomic
 from .found import Found
 
@@ -728,6 +729,7 @@ class Review:
         self.uploader = None
         self.sizes_cache = {}
         self.found = Found(self, library)
+        self.changes = None
 
     def candidates(self):
         """Candidate sets, then the burst-mode runs kept beside them for the action check."""
@@ -1717,6 +1719,12 @@ class Review:
                 "projections": list(stitch.PROJECTIONS), "orientations": list(stitch.ORIENTATIONS),
                 "running": self.running()}
 
+    def watch_changes(self, every=10.0, gap=3.0):
+        """Start pushing changes to the list to open pages (GET /api/events)."""
+        watch = {self.work_dir, self.candidates_file.parent if self.candidates_file else None, self.output_dir}
+        self.changes = Changes(self.items, watch, [self.cache_dir], every, gap).start()
+        return self.changes
+
     def running(self):
         """The stage a run is in now, from the progress.json it keeps up to date, or None."""
         try:
@@ -2069,6 +2077,19 @@ def make_handler(review, redirect_from=(), token=None):
             with open(path, "rb") as f:
                 shutil.copyfileobj(f, self.wfile, CHUNK)
 
+        def send_events(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+
+            def write(text):
+                self.wfile.write(text.encode("utf-8"))
+                self.wfile.flush()
+
+            review.changes.stream(write)
+
         def route(self):
             """Path below the base path, or None when the request is outside it."""
             path = unquote(self.path.split("?", 1)[0])
@@ -2116,6 +2137,8 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send(200, review.index_page(query))
                 elif parts == ["api", "items"]:
                     return self.send_json(200, review.items())
+                elif parts == ["api", "events"] and review.changes:
+                    return self.send_events()
                 elif parts[0] == "api" and len(parts) == 4 and parts[1] == "item":
                     return self.send_json(200, review.item_detail(parts[2], parts[3]))
                 elif parts[0] == "static" and len(parts) == 2:
@@ -2165,6 +2188,8 @@ def make_handler(review, redirect_from=(), token=None):
                 return self.send_json(403, {"error": "changes are only taken from the review page itself"})
             path = self.route()
             length = int(self.headers.get("Content-Length") or 0)
+            if review.changes:
+                review.changes.touch()
             try:
                 body = json.loads(self.rfile.read(min(length, 65536)) or b"{}")
                 if path == "/decision":
@@ -2206,6 +2231,7 @@ def serve(work_dir, host="127.0.0.1", port=8765, candidates_file=None, base_path
     thumbnails of sets found but not stitched yet."""
     review = Review(work_dir, candidates_file, base_path, cache_dir, output_dir, library)
     review.migrate()
+    review.watch_changes()
     if upload_to is not None:
         from .upload import Uploader
 
