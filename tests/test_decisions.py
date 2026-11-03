@@ -219,3 +219,22 @@ def test_ai_fill_is_never_picked_by_default(tmp_path, monkeypatch):
     stitched(tmp_path, "P00001")
     record = page.decide({"set": "P00001", "decision": "kept", "projection": "cylindrical", "orientation": "level"})
     assert record["fill"] is False and record["uncropped"] is False
+
+
+def test_a_file_held_open_elsewhere_is_tried_again_on_windows(monkeypatch):
+    from fuseshot import files
+
+    monkeypatch.setattr(files.os, "name", "nt")
+    monkeypatch.setattr(files.time, "sleep", lambda s: None)
+    calls = []
+
+    def busy():
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError("in use")
+        return "done"
+
+    assert files.retry_busy(busy) == "done"
+    assert len(calls) == 3
+    with pytest.raises(PermissionError):
+        files.retry_busy(lambda: (_ for _ in ()).throw(PermissionError("in use")), tries=2)

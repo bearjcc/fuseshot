@@ -38,7 +38,7 @@ from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
 from . import assets, jobs, log, stitch, tools
 from .events import Changes
-from .files import write_atomic
+from .files import read_text, write_atomic
 from .found import Found
 
 LOG = log.get(__name__)
@@ -948,7 +948,7 @@ class Review:
 
     def decisions(self):
         if self.decisions_file.exists():
-            return normalise(json.loads(self.decisions_file.read_text(encoding="utf-8")))
+            return normalise(json.loads(read_text(self.decisions_file)))
         return {}
 
     def migrate(self):
@@ -2179,6 +2179,9 @@ def make_handler(review, redirect_from=(), token=None):
                 pass
             except (ConnectionError, TimeoutError):
                 return
+            except OSError as err:
+                LOG.warning(f"could not answer {path}: {err}")
+                return self.send(503, "busy, try again", "text/plain")
             self.send(404, "not found", "text/plain")
 
         def do_POST(self):
