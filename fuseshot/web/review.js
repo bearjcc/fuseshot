@@ -74,7 +74,7 @@ function matches(item) {
   if (state.kind !== "all" && item.kind !== state.kind) return false;
   if (state.status === "todo" ? item.decision : state.status !== "all" && item.decision !== state.status) return false;
   if (!state.q) return true;
-  const hay = [item.id, item.camera, item.place, item.type, item.model, KIND[item.kind].one, ...(item.flags || [])].join(" ").toLowerCase();
+  const hay = [item.id, item.name, item.camera, item.place, item.type, item.model, KIND[item.kind].one, ...(item.flags || [])].join(" ").toLowerCase();
   return state.q.toLowerCase().split(/\s+/).every(word => hay.includes(word));
 }
 function sections() {
@@ -130,13 +130,14 @@ function tileHtml(item, w, h) {
     : item.edit?.state === "failed" ? `<span class="bl edit-failed">${icon("alert")}Edit failed</span>`
     : item.edit?.state === "done" ? `<span class="bl edited">${icon("pencil")}New version</span>`
     : item.note ? `<span class="bl edited">${icon("note")}Note</span>`
-    : item.kind === "found" ? foundBadge(item, { icon, esc }) : "";
+    : item.kind === "found" ? foundBadge(item, { icon, esc })
+    : item.clip ? `<span class="bl clip">${icon(KIND.action.icon)}<span>${item.making ? "Making the loop" : "Motion photo"}</span></span>` : "";
   return `<div class="tile${state.selected.has(item.key) ? " selected" : ""}" tabindex="0" data-key="${esc(item.key)}"
-    ${w ? `style="width:${w.toFixed(2)}px;height:${h.toFixed(2)}px"` : ""} title="${esc(item.id + (flags.length ? " - " + flags.join("; ") : ""))}">
+    ${w ? `style="width:${w.toFixed(2)}px;height:${h.toFixed(2)}px"` : ""} title="${esc((item.name || item.id) + (flags.length ? " - " + flags.join("; ") : ""))}">
     ${media}<div class="shade"></div>
     <button class="check" data-check title="Select">${icon(state.selected.has(item.key) ? "circleChecked" : "circle")}</button>
     <div class="tr">${flags.length ? `<span class="flag">${icon("alert")}</span>` : ""}${badge}</div>
-    ${chosen}<span class="name">${esc(item.id)}</span></div>`;
+    ${chosen}<span class="name">${esc(item.name || item.id)}</span></div>`;
 }
 
 let layoutWidth = 0;
@@ -370,7 +371,7 @@ const viewer = {
   },
   paint(direction = 0) {
     const item = this.item;
-    $("vname").textContent = item.id;
+    $("vname").textContent = item.name || item.id;
     $("vsub").textContent = [`${this.index + 1} of ${this.queue.length}`, KIND[item.kind].one, item.type !== "panorama" && item.kind === "stitch" ? `type: ${item.type}` : item.kind === "found" ? foundWhat(item) : "",
       item.frames ? `${item.frames} frames` : "", when(item.taken), item.camera].filter(Boolean).join(" · ");
     $("vprogress").style.width = `${(100 * (this.index + 1) / this.queue.length).toFixed(1)}%`;
@@ -396,6 +397,7 @@ const viewer = {
     card.style.transform = "";
     card.style.opacity = "";
     const ph = $("vplaceholder");
+    this.setClip(item.clip, item.screen);
     ph.classList.toggle("found", item.kind === "found");
     if (item.kind === "found") {
       card.hidden = true;
@@ -434,7 +436,21 @@ const viewer = {
     }
     img.src = src;
   },
-  applySize() { const img = $("vimg"); img.style.width = `${this.w}px`; img.style.height = `${this.h}px`; },
+  applySize() {
+    for (const el of [$("vimg"), $("vclip")]) { el.style.width = `${this.w}px`; el.style.height = `${this.h}px`; }
+  },
+  setClip(src, poster) {
+    // A motion photo's own clip, played as it came until the loop is kept and made.
+    const clip = $("vclip");
+    if (!src) {
+      if (!clip.hidden) { clip.pause(); clip.removeAttribute("src"); clip.dataset.src = ""; clip.load(); clip.hidden = true; }
+      return;
+    }
+    if (clip.dataset.src !== src) { clip.dataset.src = src; clip.poster = poster || ""; clip.src = src; }
+    clip.hidden = false;
+    clip.controls = reducedMotion.matches;
+    if (!reducedMotion.matches) clip.play().catch(() => {});
+  },
   fitView() {
     const stage = $("vstage").getBoundingClientRect();
     const top = narrow.matches ? 56 : 64, bottom = narrow.matches ? 92 : 84;
@@ -446,7 +462,7 @@ const viewer = {
     this.transform();
   },
   transform() {
-    $("vimg").style.transform = `translate(${this.x}px, ${this.y}px) scale(${this.s})`;
+    $("vimg").style.transform = $("vclip").style.transform = `translate(${this.x}px, ${this.y}px) scale(${this.s})`;
     if (this.s > this.fit * 1.3 && !this.fullLoaded && this.full) {
       this.fullLoaded = true;
       const pre = new Image();
@@ -610,6 +626,7 @@ const viewer = {
     const item = this.item;
     if (!item) return;
     if (item.kind === "found") { toast("A found set can be edited once it is stitched"); return; }
+    if (item.clip) { toast("Keep it to make the loop; it can be edited after that"); return; }
     if (item.kind !== "stitch") { location.href = item.href; return; }
     if ($("vpanel").hidden) togglePanel(true);
     const box = $("pedit");

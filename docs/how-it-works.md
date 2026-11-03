@@ -404,6 +404,28 @@ looping), plus `animation.gif` when that stays under 4 MB, `poster.jpg` and
 `action.json`. Sets that already have a loop are skipped, and `work/batch.stop`
 stops a chunk after the current set.
 
+### Motion photos and Live Photos
+
+    fuseshot action --motion       # write output/motion.json
+
+A Pixel `.MP.jpg` or a Samsung motion photo carries a short MP4 after the JPEG
+image, and an Apple Live Photo is a HEIC or JPEG with a MOV of the same name. The
+pairing is cheap: Immich already links the clip to the photo; in a folder library
+the MOV must have the photo's name and, when both carry a time, start within 3
+seconds of it, and for a JPEG only the first 128 KB are read for the XMP that says
+where the MP4 starts (`GCamera:MicroVideoOffset`, or a `Container:Item` with the
+`MotionPhoto` semantic; older Samsung files are found by their `MotionPhoto_Data`
+mark). What was found in each JPEG is kept in the cache, so unchanged files are not
+read again.
+
+For each clip six frames are compared with the same test as bursts: the
+background moves the corners by less than 10% between samples and less than 25%
+over the clip, and between 4% and 60% of the frame moves. Those stills show up on
+the review page as loops to keep. Until one is kept the page plays the clip
+itself, cut out of the JPEG or copied from the MOV without encoding it again;
+keeping it makes the loop files above from about 12 frames a second of the clip
+(at most 36 frames), registered and cropped the same way.
+
 ## Gaussian splats
 
     fuseshot splat --plan              # rank the sets, write work/splat_plan.json

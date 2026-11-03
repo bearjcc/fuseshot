@@ -443,11 +443,20 @@ def common_rect(mask):
 
 def animate(immich, cache_dir, asset_ids, out_dir, gap_s=0.5, log=LOG.info):
     """Write animation.webp, animation.mp4 (and a small GIF) for one action run."""
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     images = [colour_preview(immich, cache_dir, a) for a in asset_ids]
     keep = [i for i, im in enumerate(images) if im is not None]
-    images = [images[i] for i in keep]
+    delay = int(min(700, max(200, gap_s * 1000)))
+    return loop_from_frames([images[i] for i in keep], out_dir, delay,
+                            {"asset_ids": asset_ids, "used": [asset_ids[i] for i in keep]}, log)
+
+
+def loop_from_frames(images, out_dir, delay, extra, log=LOG.info):
+    """Line the frames up on the middle one's background, crop to what they share and
+    write poster.jpg, animation.webp, animation.mp4 (and a small GIF) and action.json."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not images:
+        raise RuntimeError("no frames to make a loop from")
     h, w = images[len(images) // 2].shape[:2]
     images = [im if im.shape[:2] == (h, w) else cv2.resize(im, (w, h), interpolation=cv2.INTER_AREA)
               for im in images]
@@ -469,13 +478,12 @@ def animate(immich, cache_dir, asset_ids, out_dir, gap_s=0.5, log=LOG.info):
     size = (int((right - left) * scale) // 2 * 2, int((bottom - top) * scale) // 2 * 2)
     frames = [cv2.resize(f[top:bottom, left:right], size, interpolation=cv2.INTER_AREA)
               for f in frames]
-    delay = int(min(700, max(200, gap_s * 1000)))
     poster = cv2.imencode(".jpg", frames[len(frames) // 2], [cv2.IMWRITE_JPEG_QUALITY, 88])[1]
     write_atomic(out_dir / "poster.jpg", poster.tobytes())
     written = write_webp(frames, out_dir / "animation.webp", delay)
     written += write_mp4(frames, out_dir / "animation.mp4", delay)
     written += write_gif(frames, out_dir / "animation.gif", delay)
-    info = {"asset_ids": asset_ids, "frames": len(frames), "used": [asset_ids[i] for i in keep],
+    info = {**extra, "frames": len(frames),
             "size": list(size), "delay_ms": delay, "crop": [int(left), int(top), int(right), int(bottom)],
             "shared": round(float(mask.mean()), 3), "files": written,
             "made": time.strftime("%Y-%m-%dT%H:%M:%S%z")}

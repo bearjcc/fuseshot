@@ -39,6 +39,7 @@ DESCRIBE = {
     "group": "Group photo merged by Fuseshot from {n} photos; faces come from different shots.",
     "action": "Loop made by Fuseshot from {n} photos.",
 }
+CLIP_LOOP = "Loop made by Fuseshot from the clip of a motion photo."
 FILLED = " Edges filled in by an AI model (LaMa); those pixels are invented."
 
 
@@ -55,7 +56,7 @@ def enabled():
 
 def describe(item, candidate, ai_filled):
     n = len(candidate.get("asset_ids") or []) or item.get("frames") or "several"
-    text = DESCRIBE[item["kind"]].format(n=n)
+    text = CLIP_LOOP if candidate.get("clip") else DESCRIBE[item["kind"]].format(n=n)
     return text + (FILLED if ai_filled else "")
 
 
@@ -181,7 +182,8 @@ class Uploader:
             done = data["items"].setdefault(item["key"], [])
             if any(entry.get("sha1") == checksum for entry in done):
                 continue
-            candidate = candidates.get(item["id"].split("-")[0]) or {}
+            candidate = candidates.get(item["id"].split("-")[0]) or (
+                self.review.motion_candidate(item["id"]) if item["id"].startswith("motion-") else {})
             ai_filled = item["kind"] == "stitch" and path.stem.endswith("_fill")
             day = (item.get("taken") or "")[:10]
             filename = f"{day} {item['id']} {KIND_WORDS[item['kind']]}{path.suffix}".strip()

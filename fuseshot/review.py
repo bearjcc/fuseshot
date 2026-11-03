@@ -26,7 +26,6 @@ import json
 import os
 import re
 import secrets
-import shutil
 import tempfile
 import threading
 import time
@@ -696,6 +695,19 @@ def coverage(c):
     return ""
 
 
+def byte_range(header, size):
+    """(start, end) for a single "bytes=a-b" Range header, or None for the whole file."""
+    found = re.fullmatch(r"bytes=(\d*)-(\d*)", (header or "").strip())
+    if not found or not any(found.groups()) or size == 0:
+        return None
+    first, last = found.groups()
+    if not first:
+        start, end = max(0, size - int(last)), size
+    else:
+        start, end = int(first), min(size, int(last) + 1) if last else size
+    return (start, end) if start < end else None
+
+
 def library_label(c):
     if c.get("library") != "folder":
         return "Immich"
@@ -729,6 +741,10 @@ class Review:
         self.uploader = None
         self.sizes_cache = {}
         self.found = Found(self, library)
+        self.library = library
+        self.motion_file = self.actions_file.with_name("motion.json")
+        self.motion_cache = (None, {})
+        self.making = set()
         self.changes = None
 
     def candidates(self):
@@ -797,6 +813,8 @@ class Review:
         return self.groups_cache[1]
 
     def detected_type(self, set_id, candidate, actions):
+        if set_id.startswith("motion-"):
+            return "action"
         if self.groups().get(set_id.split("-")[0], {}).get("group"):
             return "group"
         if actions.get(set_id, {}).get("action"):
@@ -826,6 +844,80 @@ class Review:
         if not SET_ID.match(key or "") or not (self.loops_dir / key / "action.json").exists():
             raise KeyError(key)
         return self.loops_dir / key
+
+    def motion_clips(self):
+        """Stills whose clip (a motion photo or Live Photo) passed the action check, by key,
+        reread only when motion.json changes."""
+        if not self.motion_file.exists():
+            return {}
+        stamp = self.motion_file.stat().st_mtime
+        if self.motion_cache[0] != stamp:
+            data = json.loads(self.motion_file.read_text(encoding="utf-8")).get("clips", {})
+            self.motion_cache = (stamp, {k: v for k, v in data.items() if v.get("action") and SET_ID.match(k)})
+        return self.motion_cache[1]
+
+    def motion_info(self, key):
+        info = self.motion_clips().get(key)
+        if not info:
+            raise KeyError(key)
+        return info
+
+    def motion_candidate(self, key):
+        """What a loop from a clip knows of its photo, in the shape of a candidate set."""
+        info = self.motion_clips().get(key) or {}
+        if not info:
+            return {}
+        path = info["clip"].get("path")
+        local = (info.get("taken") or "")[:19].replace("T", " ") or None
+        return {"set_id": key, "name": info.get("file_name"), "start_local": local, "start_utc": info.get("taken_utc"),
+                "camera": info.get("camera") or "", "asset_ids": [info["asset_id"]], "library": info.get("library"),
+                "library_path": str(Path(path).parent) if path else None, "clip": True,
+                "reason": info.get("reason")}
+
+    def clip_file(self, key):
+        """The clip as it came: cut out of the motion photo or the MOV beside it."""
+        from . import motion
+
+        info = self.motion_info(key)
+        return motion.fetch_clip(self.library, info["clip"],
+                                 self.cache_dir / "motion" / (key + motion.clip_suffix(info["clip"])))
+
+    def clip_still(self, key, size=None):
+        info = self.motion_info(key)
+        path = self.cache_dir / "motion" / f"{key}.jpg"
+        if not path.exists():
+            if self.library is None:
+                raise KeyError(key)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_atomic(path, self.library.thumbnail(info["asset_id"], "preview"))
+        if size in SIZES:
+            return scaled_copy(path, self.cache_dir / size / "motion" / path.name, SIZES[size])
+        return path
+
+    def make_clip_loop(self, key):
+        """Make the loop of a kept clip in the background, then export it like any loop."""
+        from . import motion
+
+        info = self.motion_info(key)
+        with self.lock:
+            if key in self.making or (self.loops_dir / key / "action.json").exists():
+                return
+            self.making.add(key)
+
+        def run():
+            try:
+                motion.make_loop(self.clip_file(key), self.loops_dir / key, info,
+                                 log=lambda m: LOG.info("loop %s", m))
+            except Exception as err:
+                LOG.info(f"{key}: no loop from the clip: {err}")
+            finally:
+                self.making.discard(key)
+                if self.changes:
+                    self.changes.touch()
+            if (self.loops_dir / key / "action.json").exists():
+                self.export_later({f"action:{key}"})
+
+        threading.Thread(target=run, daemon=True).start()
 
     def loop_file(self, key, file_name, size=None):
         if file_name not in LOOP_FILES:
@@ -970,7 +1062,8 @@ class Review:
         if kind == "found":
             self.found.check(set_id)
         elif kind == "action":
-            self.loop_dir(set_id)
+            if set_id not in self.motion_clips():
+                self.loop_dir(set_id)
         elif kind == "group":
             self.group_dir(set_id)
         elif kind == "splat":
@@ -999,6 +1092,12 @@ class Review:
         """Export what was kept, and take sets discarded while found off the stitching queue."""
         kept = {f"{r.get('kind', 'stitch')}:{s}" for s, r in records
                 if r["decision"] == "kept" and r.get("kind") != "found"}
+        clips = self.motion_clips()
+        for s, r in records:
+            if r.get("kind") == "action" and r["decision"] == "kept" and s in clips \
+                    and not (self.loops_dir / s / "action.json").exists():
+                kept.discard(f"action:{s}")
+                self.make_clip_loop(s)
         if kept:
             self.export_later(kept)
         dropped = [s for s, r in records if r.get("kind") == "found" and r["decision"] == "discarded"]
@@ -1168,7 +1267,7 @@ class Review:
         rows = []
         for key in keys:
             info = json.loads((self.loops_dir / key / "action.json").read_text(encoding="utf-8"))
-            c = candidates.get(key.split("-")[0], {})
+            c = candidates.get(key.split("-")[0]) or self.motion_candidate(key)
             href = f"{self.base}/action/{key}"
             image = (f"<a href='{href}'><img class='thumb' loading='lazy' alt='' "
                      f"src='{self.base}/loop/{key}/poster.jpg?size=thumb'></a>")
@@ -1190,7 +1289,8 @@ class Review:
         loop_dir = self.loop_dir(key)
         info = json.loads((loop_dir / "action.json").read_text(encoding="utf-8"))
         actions = self.actions()
-        c = next((x for x in self.candidates() if x["set_id"] == key.split("-")[0]), {})
+        c = next((x for x in self.candidates() if x["set_id"] == key.split("-")[0]), None) \
+            or self.motion_candidate(key)
         check = actions.get(key, {})
         last = self.last_decision(self.decisions(), key, "action").get("decision")
         taken = (c.get("start_local") or "")[:16].replace("T", " ")
@@ -1663,7 +1763,7 @@ class Review:
     def loop_item(self, key, decisions, candidates, actions):
         loop_dir = self.loops_dir / key
         info = self.read_json(loop_dir / "action.json")
-        c = candidates.get(key.split("-")[0], {})
+        c = candidates.get(key.split("-")[0]) or self.motion_candidate(key)
         poster = loop_dir / "poster.jpg"
         size = self.image_size(poster) or [3, 2]
         animation = loop_dir / "animation.webp"
@@ -1676,8 +1776,23 @@ class Review:
             "full": f"{self.base}/loop/{key}/animation.webp?v={version}" if version else None,
             "w": size[0], "h": size[1], "type": "action", "frames": info.get("frames"),
             "taken": c.get("start_local"), "camera": c.get("camera"), "place": c.get("places"),
-            "link": c.get("best_link") or c.get("first_link"), **library_fields(c), "reason": actions.get(key, {}).get("reason"),
-            "flags": [f[0] for f in flags], "score": sum(f[1] for f in flags),
+            "link": c.get("best_link") or c.get("first_link"), **library_fields(c), "reason": actions.get(key, {}).get("reason") or c.get("reason"),
+            "name": c.get("name"), "flags": [f[0] for f in flags], "score": sum(f[1] for f in flags),
+            **self.decision_fields(decisions, key, "action"),
+        }
+
+    def clip_item(self, key, info, decisions):
+        """A still whose clip passed the action check, offered as a loop before one is made:
+        the page plays the clip itself."""
+        c = self.motion_candidate(key)
+        size = info.get("size") or [4, 3]
+        still = f"{self.base}/clip/{key}/still.jpg"
+        return {
+            "key": f"action:{key}", "kind": "action", "id": key, "href": None,
+            "thumb": still + "?size=thumb", "screen": still, "full": still, "clip": f"{self.base}/clip/{key}/video",
+            "making": key in self.making, "w": size[0], "h": size[1], "type": "action", "frames": None,
+            "name": c.get("name"), "taken": c.get("start_local"), "camera": c.get("camera"), "place": None, "link": None,
+            **library_fields(c), "reason": info.get("reason"), "flags": [], "score": 0,
             **self.decision_fields(decisions, key, "action"),
         }
 
@@ -1711,6 +1826,7 @@ class Review:
         group_checks = self.groups()
         found += [self.group_item(k, decisions, candidates, group_checks) for k in self.merges()]
         found += [self.loop_item(k, decisions, candidates, actions) for k in loops]
+        found += [self.clip_item(k, v, decisions) for k, v in sorted(self.motion_clips().items()) if k not in loops]
         found = self.found.carry(found, decisions) + self.found.items(candidates, decisions, actions, types)
         for row in self.splat_plan().get("sets", []):
             if self.splat_records(row["set_id"])[1].get("steps"):
@@ -1823,7 +1939,8 @@ class Review:
             if kind == "group":
                 self.group_dir(key)
             elif kind == "action":
-                self.loop_dir(key)
+                if key not in self.motion_clips():
+                    self.loop_dir(key)
             else:
                 self.splat_dir(key)
             return detail
@@ -2074,14 +2191,28 @@ def make_handler(review, redirect_from=(), token=None):
                 self.send_header("ETag", etag)
                 self.end_headers()
                 return
-            self.send_response(200)
+            # Safari asks for videos a range at a time and will not play them otherwise.
+            span = byte_range(self.headers.get("Range"), stat.st_size) if kind.startswith("video/") else None
+            start, end = span or (0, stat.st_size)
+            self.send_response(206 if span else 200)
             self.send_header("Content-Type", kind)
-            self.send_header("Content-Length", str(stat.st_size))
+            self.send_header("Content-Length", str(end - start))
+            if kind.startswith("video/"):
+                self.send_header("Accept-Ranges", "bytes")
+            if span:
+                self.send_header("Content-Range", f"bytes {start}-{end - 1}/{stat.st_size}")
             self.send_header("ETag", etag)
             self.send_header("Cache-Control", "public, max-age=31536000, immutable" if versioned else "no-cache")
             self.end_headers()
             with open(path, "rb") as f:
-                shutil.copyfileobj(f, self.wfile, CHUNK)
+                f.seek(start)
+                left = end - start
+                while left > 0:
+                    data = f.read(min(CHUNK, left))
+                    if not data:
+                        break
+                    self.wfile.write(data)
+                    left -= len(data)
 
         def send_events(self):
             self.send_response(200)
@@ -2168,6 +2299,14 @@ def make_handler(review, redirect_from=(), token=None):
                     q = {k: v[0] for k, v in parse_qs(query).items()}
                     path = review.loop_file(parts[1], parts[2], q.get("size"))
                     return self.send_file(path, "v" in q, LOOP_FILES[parts[2]])
+                elif parts[0] == "clip" and len(parts) == 3 and parts[2] in ("still.jpg", "video"):
+                    if parts[2] == "video":
+                        from .motion import CLIP_TYPES
+
+                        path = review.clip_file(parts[1])
+                        return self.send_file(path, False, CLIP_TYPES[path.suffix])
+                    q = {k: v[0] for k, v in parse_qs(query).items()}
+                    return self.send_file(review.clip_still(parts[1], q.get("size")), False)
                 elif parts[0] == "group" and len(parts) == 2:
                     return self.send(200, review.group_page(parts[1]))
                 elif parts[0] == "groupfile" and len(parts) in (3, 4):

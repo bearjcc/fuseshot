@@ -134,6 +134,7 @@ svg.i { width: 24px; height: 24px; fill: currentColor; flex: none; display: bloc
   background: var(--gray); user-select: none; -webkit-user-drag: none; }
 .tile .bl.found { background: rgba(0,0,0,.6); max-width: calc(100% - 12px); white-space: nowrap; }
 .tile .bl.found .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: .85; }
+.tile .bl.clip { background: rgba(0,0,0,.6); }
 .tile .bl.found.queued { background: var(--skip); } .tile .bl.found.stitching { background: var(--edit); }
 .found-status { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px 2px 6px; border-radius: 12px;
   font-size: 13px; font-weight: 500; color: #fff; background: rgba(255,255,255,.16); }
@@ -151,7 +152,8 @@ svg.i { width: 24px; height: 24px; fill: currentColor; flex: none; display: bloc
 .v-progress i { display: block; height: 100%; width: 0; background: #accbfa; transition: width .25s; }
 .v-stage { position: absolute; inset: 0; overflow: hidden; touch-action: none; user-select: none; }
 .v-card { position: absolute; inset: 0; will-change: transform; }
-.v-card img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; user-select: none; }
+.v-card img, .v-card video { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; user-select: none; }
+.v-card video { pointer-events: none; }
 .v-card.fling { transition: transform .18s ease-out, opacity .18s ease-out; }
 .v-psv { position: absolute; inset: 0; }
 .v-placeholder { position: absolute; inset: 0; display: grid; place-content: center; gap: 16px; justify-items: center; color: #bbb; text-align: center; padding: 24px; }
