@@ -102,6 +102,17 @@ class Found:
             **self.review.decision_fields(decisions, set_id, KIND),
         }
 
+    def carry(self, items, decisions):
+        """A set discarded while it was still stitching stays discarded when its result comes in."""
+        for item in items:
+            if item["kind"] != "stitch" or item.get("decision"):
+                continue
+            set_id = self.review.batch_record(item["id"]).get("set_id") or item["id"].split("-")[0]
+            fields = self.review.decision_fields(decisions, set_id, KIND)
+            if fields["decision"] == "discarded":
+                item.update(fields)
+        return items
+
     def check(self, set_id):
         """Raise KeyError unless set_id is a set detect found."""
         if not any(c["set_id"] == set_id for c in self.review.candidates()):

@@ -76,7 +76,7 @@ VENDOR_FILES = {
 SPLAT_FILES = {"scene.splat": "application/octet-stream"}
 WEB_DIR = Path(__file__).resolve().parent / "web"
 WEB_FILES = {"review.css": "text/css; charset=utf-8", "review.js": "text/javascript; charset=utf-8",
-             "icons.js": "text/javascript; charset=utf-8"}
+             "icons.js": "text/javascript; charset=utf-8", "found.js": "text/javascript; charset=utf-8"}
 KINDS = ("stitch", "group", "action", "splat", "found")
 
 
@@ -1711,7 +1711,7 @@ class Review:
         group_checks = self.groups()
         found += [self.group_item(k, decisions, candidates, group_checks) for k in self.merges()]
         found += [self.loop_item(k, decisions, candidates, actions) for k in loops]
-        found += self.found.items(candidates, decisions)
+        found = self.found.carry(found, decisions) + self.found.items(candidates, decisions)
         for row in self.splat_plan().get("sets", []):
             if self.splat_records(row["set_id"])[1].get("steps"):
                 found.append(self.splat_item(row, decisions, candidates))

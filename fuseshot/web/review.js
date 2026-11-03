@@ -1,6 +1,7 @@
 // Review grid and one-at-a-time viewer, laid out like the Immich web app.
 // Decisions are kept by the server in work/reviews.json; nothing here needs a build step.
 import { ICONS } from "./icons.js";
+import { FOUND, byPromise, foundBadge, foundStage, foundStrip, foundWhat, listen } from "./found.js";
 
 const $ = id => document.getElementById(id);
 const DECISION_LABEL = { kept: "Kept", discarded: "Discarded", editing: "Being edited" };
@@ -10,6 +11,7 @@ const KIND = {
   group: { label: "Groups", one: "Group shot", icon: "group" },
   action: { label: "Loops", one: "Loop", icon: "run" },
   splat: { label: "Splats", one: "Object scan", icon: "cube" },
+  found: FOUND,
 };
 const STATUSES = [
   ["todo", "To review", "inbox"], ["kept", "Kept", "checkCircle"], ["discarded", "Discarded", "closeCircle"],
@@ -63,7 +65,7 @@ const state = {
   items: [], byKey: new Map(), types: {}, models: [], projections: [], orientations: [],
   status: "todo", kind: "all", sort: "queue", q: "",
   shown: [], selected: new Set(), anchor: null,
-  undo: [], details: new Map(),
+  undo: [], details: new Map(), gone: [],
 };
 
 // filtering and the grid
@@ -88,9 +90,12 @@ function sections() {
     }
     return out;
   }
-  const look = list.filter(i => i.score > 0).sort((a, b) => b.score - a.score || byDate(a, b));
-  const clean = list.filter(i => !i.score).sort(byDate);
+  const found = list.filter(i => i.kind === "found").sort(byPromise);
+  const rest = list.filter(i => i.kind !== "found");
+  const look = rest.filter(i => i.score > 0).sort((a, b) => b.score - a.score || byDate(a, b));
+  const clean = rest.filter(i => !i.score).sort(byDate);
   return [
+    { title: "Found while scanning", hint: "not stitched yet, most promising first", items: found },
     { title: "Needs a look", hint: "flagged by the checks, worst first", items: look },
     { title: "Looks clean", hint: "nothing flagged", items: clean, clean: true },
   ].filter(s => s.items.length);
@@ -115,16 +120,17 @@ function justify(items, width, height, gap) {
 
 function tileHtml(item, w, h) {
   const flags = item.flags || [];
-  const badge = item.kind === "stitch"
+  const badge = item.kind === "stitch" || item.kind === "found"
     ? (item.frames ? `<span>${item.used && item.used !== item.frames ? `${item.used}/` : ""}${item.frames}</span>${icon("frames")}` : "")
     : icon(KIND[item.kind].icon);
-  const media = item.thumb
+  const media = item.strip?.length ? foundStrip(item, esc) : item.thumb
     ? `<img loading="lazy" decoding="async" src="${esc(item.thumb)}" alt="">`
     : `<div class="placeholder">${icon(KIND[item.kind].icon)}</div>`;
   const chosen = item.decision ? `<span class="bl ${item.decision}">${icon(DECISION_ICON[item.decision])}${DECISION_LABEL[item.decision]}</span>`
     : item.edit?.state === "failed" ? `<span class="bl edit-failed">${icon("alert")}Edit failed</span>`
     : item.edit?.state === "done" ? `<span class="bl edited">${icon("pencil")}New version</span>`
-    : item.note ? `<span class="bl edited">${icon("note")}Note</span>` : "";
+    : item.note ? `<span class="bl edited">${icon("note")}Note</span>`
+    : item.kind === "found" ? foundBadge(item, { icon, esc }) : "";
   return `<div class="tile${state.selected.has(item.key) ? " selected" : ""}" tabindex="0" data-key="${esc(item.key)}"
     style="width:${w.toFixed(2)}px;height:${h.toFixed(2)}px" title="${esc(item.id + (flags.length ? " - " + flags.join("; ") : ""))}">
     ${media}<div class="shade"></div>
@@ -339,13 +345,14 @@ const viewer = {
     if (!fromHistory) {
       if (history.state?.view) history.back(); else writeUrl(null, true);
     }
-    renderGrid();
+    if (state.gone.length) merge({}); else renderGrid();
     const tile = key && document.querySelector(`.tile[data-key="${CSS.escape(key)}"]`);
     if (tile) { tile.scrollIntoView({ block: "center" }); tile.focus({ preventScroll: true }); }
   },
   show(index, direction) {
     if (index < 0) { toast("This is the first one"); return; }
     if (index >= this.queue.length) { this.finished(); return; }
+    if (!state.byKey.has(this.queue[index])) { this.queue.splice(index, 1); this.show(index, direction); return; }
     this.index = index;
     this.item = state.byKey.get(this.queue[index]);
     this.view = null; this.frame = null; this.compare = false; this.detail = null; this.wantEdit = false;
@@ -363,12 +370,14 @@ const viewer = {
   paint(direction = 0) {
     const item = this.item;
     $("vname").textContent = item.id;
-    $("vsub").textContent = [`${this.index + 1} of ${this.queue.length}`, KIND[item.kind].one, item.type !== "panorama" && item.kind === "stitch" ? `type: ${item.type}` : "",
+    $("vsub").textContent = [`${this.index + 1} of ${this.queue.length}`, KIND[item.kind].one, item.type !== "panorama" && item.kind === "stitch" ? `type: ${item.type}` : item.kind === "found" ? foundWhat(item) : "",
       item.frames ? `${item.frames} frames` : "", when(item.taken), item.camera].filter(Boolean).join(" · ");
     $("vprogress").style.width = `${(100 * (this.index + 1) / this.queue.length).toFixed(1)}%`;
     $("vimmich").hidden = !item.link;
     if (item.link) $("vimmich").href = item.link;
-    $("vedit").href = item.href;
+    $("vedit").hidden = !item.href;
+    if (item.href) $("vedit").href = item.href;
+    $("vdoedit").hidden = item.kind === "found";
     $("vframes").hidden = item.kind !== "stitch";
     $("vselect").innerHTML = icon(state.selected.has(item.key) ? "circleChecked" : "circle");
     $("vselect").classList.toggle("on", state.selected.has(item.key));
@@ -385,9 +394,16 @@ const viewer = {
     card.classList.remove("fling");
     card.style.transform = "";
     card.style.opacity = "";
+    const ph = $("vplaceholder");
+    ph.classList.toggle("found", item.kind === "found");
+    if (item.kind === "found") {
+      card.hidden = true;
+      ph.hidden = false;
+      ph.innerHTML = foundStage(item, { icon, esc });
+      return;
+    }
     if (!item.screen) {
       card.hidden = true;
-      const ph = $("vplaceholder");
       ph.hidden = false;
       ph.innerHTML = `${icon(KIND[item.kind].icon)}<div>${item.kind === "splat"
         ? `3D object scan${item.splats ? `, ${item.splats.toLocaleString()} splats` : ""}` : "Not rendered yet"}</div>
@@ -470,6 +486,7 @@ const viewer = {
   async loadDetail() {
     const item = this.item;
     renderPanel(item, null);
+    if (item.kind === "found") return;
     let detail = state.details.get(item.key);
     if (!detail) {
       try {
@@ -591,6 +608,7 @@ const viewer = {
   editCurrent() {
     const item = this.item;
     if (!item) return;
+    if (item.kind === "found") { toast("A found set can be edited once it is stitched"); return; }
     if (item.kind !== "stitch") { location.href = item.href; return; }
     if ($("vpanel").hidden) togglePanel(true);
     const box = $("pedit");
@@ -644,6 +662,7 @@ function renderPanel(item, detail) {
     <div class="p-section"><textarea id="pnote" rows="1" placeholder="Add a note (saved with the decision)">${esc(item.note)}</textarea></div>
     <div class="p-section"><div class="p-label">Details</div>
     ${row("calendar", when(item.taken))}
+    ${item.kind === "found" ? row("magnify", esc(foundWhat(item))) : ""}
     ${row("frames", item.frames ? `${item.frames} frames${item.used && item.used !== item.frames ? `, ${item.used} used` : ""}` : "",
       item.kind === "group" ? `${item.people || 0} people, ${item.swapped || 0} faces swapped in` : item.reason || "")}
     ${item.kind === "stitch" ? row("stitch", [item.model && `${item.model} model`, item.error != null && `${(+item.error).toFixed(1)} px error`].filter(Boolean).join(" · "),
@@ -701,7 +720,7 @@ function renderPanel(item, detail) {
   }
   html += `<div class="p-section p-links"><div class="p-label">Open</div>
     ${item.link ? `<a href="${esc(item.link)}" target="_blank" rel="noopener">${icon("openInNew")}In Immich</a>` : ""}
-    <a href="${esc(item.href)}">${icon("pencil")}${item.kind === "stitch" ? "Editor: render, AI fill, alignment" : item.kind === "group" ? "Face choices" : item.kind === "splat" ? "3D viewer" : "Loop page"}</a>
+    ${item.href ? `<a href="${esc(item.href)}">${icon("pencil")}${item.kind === "stitch" ? "Editor: render, AI fill, alignment" : item.kind === "group" ? "Face choices" : item.kind === "splat" ? "3D viewer" : "Loop page"}</a>` : ""}
     ${item.full ? `<a href="${esc(item.full)}" target="_blank">${icon("image")}Full size image</a>` : ""}</div>`;
   $("pbody").innerHTML = html;
   const note = $("pnote");
@@ -1122,7 +1141,9 @@ async function load() {
   }
   renderGrid();
   if (view && state.byKey.has(view)) openFromUrl(view);
-  setInterval(() => { if (state.running || state.items.some(i => i.decision === "editing")) refresh(); }, 15000);
+  if (!listen(BASE, { refresh, apply: merge })) {
+    setInterval(() => { if (state.running || state.items.some(i => i.decision === "editing")) refresh(); }, 15000);
+  }
 }
 
 function timeLeft(seconds) {
@@ -1171,20 +1192,34 @@ async function refresh() {
     const r = await fetch(`${BASE}/api/items`);
     if (!r.ok) return;
     const data = await r.json();
-    showRunning(data.running);
-    for (const fresh of data.items) {
-      const item = state.byKey.get(fresh.key);
-      if (!item) { state.items.push(fresh); state.byKey.set(fresh.key, fresh); continue; }
-      const finished = item.decision === "editing" && fresh.decision !== "editing";
-      if (viewer.open && viewer.item === item && !finished) continue;
-      Object.assign(item, fresh);
-      if (finished) {
-        state.details.delete(item.key);
-        toast(fresh.edit?.state === "failed" ? `${item.id}: the edit failed` : `${item.id}: new version ready to review`, { error: fresh.edit?.state === "failed" });
-      }
+    const keys = new Set(data.items.map(i => i.key));
+    merge({ changed: data.items, removed: state.items.filter(i => !keys.has(i.key)).map(i => i.key), running: data.running });
+  } catch { /* the next change tries again */ }
+}
+
+// Changes from the server: new and changed items, and items gone (a found set once it is stitched).
+// The one open in the viewer stays until the viewer moves on.
+function merge({ changed = [], removed = [], running }) {
+  if (running !== undefined) showRunning(running);
+  for (const fresh of changed) {
+    const item = state.byKey.get(fresh.key);
+    if (!item) { state.items.push(fresh); state.byKey.set(fresh.key, fresh); continue; }
+    const finished = item.decision === "editing" && fresh.decision !== "editing";
+    if (viewer.open && viewer.item === item && !finished) continue;
+    Object.assign(item, fresh);
+    if (finished) {
+      state.details.delete(item.key);
+      toast(fresh.edit?.state === "failed" ? `${item.id}: the edit failed` : `${item.id}: new version ready to review`, { error: fresh.edit?.state === "failed" });
     }
-    if (viewer.open) renderGridLater(); else renderGrid();
-  } catch { /* try again on the next tick */ }
+  }
+  const held = viewer.open ? viewer.item?.key : null;
+  const gone = new Set([...state.gone, ...removed]);
+  state.gone = held && gone.delete(held) ? [held] : [];
+  if (gone.size) {
+    state.items = state.items.filter(i => !gone.has(i.key));
+    gone.forEach(k => { state.byKey.delete(k); state.selected.delete(k); state.details.delete(k); });
+  }
+  if (viewer.open) renderGridLater(); else renderGrid();
 }
 
 load();

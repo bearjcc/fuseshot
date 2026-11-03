@@ -117,3 +117,17 @@ def test_thumbnails_come_from_the_source_once(review):
     for bad in ("6", "x", "5"):
         with pytest.raises(KeyError):
             review.found.thumb_file("P1", bad)
+
+
+def test_a_set_discarded_while_stitching_comes_back_discarded(review):
+    review.decide({"set": "P4", "kind": "found", "decision": "discarded"})
+    set_dir = review.work_dir / "P4"
+    (set_dir / "previews").mkdir()
+    (set_dir / "optimised.pto").write_text("p\n")
+    Image.new("RGB", (64, 32)).save(set_dir / "previews" / "cylindrical-level.jpg")
+    (set_dir / "batch.json").write_text(json.dumps({"set_id": "P4", "status": "stitched"}))
+    item = next(i for i in review.items()["items"] if i["key"] == "stitch:P4")
+    assert item["decision"] == "discarded"
+    review.decide({"set": "P4", "kind": "stitch", "decision": "kept"})
+    item = next(i for i in review.items()["items"] if i["key"] == "stitch:P4")
+    assert item["decision"] == "kept"

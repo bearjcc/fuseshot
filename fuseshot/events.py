@@ -25,6 +25,7 @@ class Changes:
         self.ignore = [str(Path(p)) for p in ignore if p]
         self.every, self.gap = every, gap
         self.cond = threading.Condition()
+        self.busy = threading.Lock()
         self.dirty = threading.Event()
         self.version = 0
         self.events = deque(maxlen=KEEP)
@@ -74,6 +75,10 @@ class Changes:
             time.sleep(self.gap)
 
     def recompute(self):
+        with self.busy:
+            return self.diff()
+
+    def diff(self):
         try:
             data = self.compute()
         except Exception:
@@ -106,11 +111,12 @@ class Changes:
             return self.version, news, behind
 
     def stream(self, write):
-        """Write events to one page until it goes away."""
+        """Write events to one page until it goes away. The list is brought up to date before
+        the hello, so the page's own load after it misses nothing."""
         with self.cond:
             self.listeners += 1
-            since = self.version
-        self.touch()
+        self.recompute()
+        since = self.version
         try:
             write(f"retry: 3000\nevent: hello\ndata: {json.dumps({'version': since})}\n\n")
             while True:
