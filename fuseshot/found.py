@@ -93,7 +93,7 @@ class Found:
         return {
             "key": f"{KIND}:{set_id}", "kind": KIND, "id": set_id, "href": None,
             "thumb": strip[0] if strip else None, "strip": strip, "screen": None, "full": None,
-            "w": 4 * max(len(strip), 1), "h": 3, "type": base_type(c) or c.get("guessed_type") or "panorama",
+            "w": 4, "h": 3, "type": base_type(c) or c.get("guessed_type") or "panorama",
             "guess": c.get("guessed_type"), "checked": "verified_type" in c, "confidence": confidence,
             "frames": count, "taken": c.get("start_local"), "camera": c.get("camera"), "place": c.get("places"),
             "link": c.get("best_link") or c.get("first_link"), **library_fields(c),

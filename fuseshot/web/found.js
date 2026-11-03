@@ -18,6 +18,28 @@ export function foundStrip(item, esc) {
     `<img loading="lazy" decoding="async" src="${esc(src)}" alt="" draggable="false">`).join("")}</div>`;
 }
 
+// The grid tile: up to four frames as a 2x2 mosaic. Moving the mouse across it shows one
+// frame at a time, left to right.
+export function foundMosaic(item, esc) {
+  return `<div class="found-mosaic n${item.strip.length}">${item.strip.map((src, i) =>
+    `<img loading="lazy" decoding="async" src="${esc(src)}" alt="" draggable="false" data-i="${i}">`).join("")}</div>`;
+}
+
+export function scrubFound(grid) {
+  grid.addEventListener("pointermove", e => {
+    const mosaic = e.pointerType === "mouse" && e.target.closest(".found-mosaic");
+    if (!mosaic) return;
+    const box = mosaic.getBoundingClientRect(), imgs = mosaic.children;
+    const at = Math.min(imgs.length - 1, Math.floor((e.clientX - box.left) / box.width * imgs.length));
+    mosaic.classList.add("scrub");
+    for (const img of imgs) img.classList.toggle("on", +img.dataset.i === at);
+  });
+  grid.addEventListener("pointerout", e => {
+    const mosaic = e.target.closest(".found-mosaic");
+    if (mosaic && !mosaic.contains(e.relatedTarget)) mosaic.classList.remove("scrub");
+  });
+}
+
 export function foundWhat(item) {
   const sure = item.confidence != null ? `, ${Math.round(item.confidence * 100)}% sure` : "";
   return item.checked ? `${item.type}${sure}` : `looks like a ${item.guess || item.type}${sure}, not checked yet`;
@@ -48,5 +70,5 @@ export function listen(base, { refresh, apply }) {
 
 export function foundBadge(item, { icon, esc }) {
   const [label, ic] = STATUS[item.status] || STATUS.found;
-  return `<span class="bl found ${item.status}">${icon(ic)}${label} · ${esc(item.checked ? item.type : item.guess || item.type)}</span>`;
+  return `<span class="bl found ${item.status}">${icon(ic)}<span>${label}</span><span class="what">·&nbsp;${esc(item.checked ? item.type : item.guess || item.type)}</span></span>`;
 }

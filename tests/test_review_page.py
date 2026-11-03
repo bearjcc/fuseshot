@@ -139,8 +139,24 @@ def test_a_found_set_shows_its_frames_and_can_be_discarded_before_stitching(foun
     tile = tab.locator('.tile[data-key^="found:"]')
     assert tile.count() == 1
     assert "Found while scanning" in tab.locator(".section-head").first.text_content()
-    tab.wait_for_function("[...document.querySelectorAll('.found-strip img')].every(i => i.naturalWidth > 0)")
-    assert tile.locator(".found-strip img").count() == 4
+    tab.wait_for_function("[...document.querySelectorAll('.found-mosaic img')].every(i => i.naturalWidth > 0)")
+    assert tile.locator(".found-mosaic img").count() == 4
+    grid_width = tab.locator("#grid").bounding_box()["width"]
+    box = tile.bounding_box()
+    assert box["width"] < grid_width / 3 and abs(box["width"] / box["height"] - 4 / 3) < 0.05
+
+    tab.mouse.move(box["x"] + box["width"] * 0.9, box["y"] + box["height"] / 2)
+    tab.wait_for_function("document.querySelector('.found-mosaic.scrub img.on')?.dataset.i === '3'")
+    tab.mouse.move(box["x"] + box["width"] * 0.1, box["y"] + box["height"] / 2)
+    tab.wait_for_function("document.querySelector('.found-mosaic.scrub img.on')?.dataset.i === '0'")
+    tab.mouse.move(0, 0)
+    tab.wait_for_function("!document.querySelector('.found-mosaic.scrub')")
+
+    tab.set_viewport_size({"width": 390, "height": 800})
+    tab.wait_for_function("document.querySelector('.found-grid .tile')?.getBoundingClientRect().width > 150")
+    grid = tab.locator(".found-grid").bounding_box()["width"]
+    assert abs(tile.bounding_box()["width"] - (grid - 4) / 2) < 2
+    tab.set_viewport_size({"width": 1280, "height": 720})
     assert "Found" in tile.locator(".bl").text_content()
     set_id = tile.get_attribute("data-key").split(":")[1]
 

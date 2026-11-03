@@ -1,7 +1,7 @@
 // Review grid and one-at-a-time viewer, laid out like the Immich web app.
 // Decisions are kept by the server in work/reviews.json; nothing here needs a build step.
 import { ICONS } from "./icons.js";
-import { FOUND, byPromise, foundBadge, foundStage, foundStrip, foundWhat, listen } from "./found.js";
+import { FOUND, byPromise, foundBadge, foundMosaic, foundStage, foundWhat, listen, scrubFound } from "./found.js";
 
 const $ = id => document.getElementById(id);
 const DECISION_LABEL = { kept: "Kept", discarded: "Discarded", editing: "Being edited" };
@@ -95,7 +95,7 @@ function sections() {
   const look = rest.filter(i => i.score > 0).sort((a, b) => b.score - a.score || byDate(a, b));
   const clean = rest.filter(i => !i.score).sort(byDate);
   return [
-    { title: "Found while scanning", hint: "not stitched yet, most promising first", items: found },
+    { title: "Found while scanning", hint: "not stitched yet, most promising first", items: found, found: true },
     { title: "Needs a look", hint: "flagged by the checks, worst first", items: look },
     { title: "Looks clean", hint: "nothing flagged", items: clean, clean: true },
   ].filter(s => s.items.length);
@@ -123,7 +123,7 @@ function tileHtml(item, w, h) {
   const badge = item.kind === "stitch" || item.kind === "found"
     ? (item.frames ? `<span>${item.used && item.used !== item.frames ? `${item.used}/` : ""}${item.frames}</span>${icon("frames")}` : "")
     : icon(KIND[item.kind].icon);
-  const media = item.strip?.length ? foundStrip(item, esc) : item.thumb
+  const media = item.strip?.length ? foundMosaic(item, esc) : item.thumb
     ? `<img loading="lazy" decoding="async" src="${esc(item.thumb)}" alt="">`
     : `<div class="placeholder">${icon(KIND[item.kind].icon)}</div>`;
   const chosen = item.decision ? `<span class="bl ${item.decision}">${icon(DECISION_ICON[item.decision])}${DECISION_LABEL[item.decision]}</span>`
@@ -132,7 +132,7 @@ function tileHtml(item, w, h) {
     : item.note ? `<span class="bl edited">${icon("note")}Note</span>`
     : item.kind === "found" ? foundBadge(item, { icon, esc }) : "";
   return `<div class="tile${state.selected.has(item.key) ? " selected" : ""}" tabindex="0" data-key="${esc(item.key)}"
-    style="width:${w.toFixed(2)}px;height:${h.toFixed(2)}px" title="${esc(item.id + (flags.length ? " - " + flags.join("; ") : ""))}">
+    ${w ? `style="width:${w.toFixed(2)}px;height:${h.toFixed(2)}px"` : ""} title="${esc(item.id + (flags.length ? " - " + flags.join("; ") : ""))}">
     ${media}<div class="shade"></div>
     <button class="check" data-check title="Select">${icon(state.selected.has(item.key) ? "circleChecked" : "circle")}</button>
     <div class="tr">${flags.length ? `<span class="flag">${icon("alert")}</span>` : ""}${badge}</div>
@@ -152,8 +152,9 @@ function renderGrid() {
     const all = keys.length && keys.every(k => state.selected.has(k));
     const keepAll = sec.clean && state.status === "todo"
       ? `<button class="pill keep" data-keep-section="${n}">${icon("checkAll")}<span>Keep all ${sec.items.length}</span></button>` : "";
-    const rows = justify(sec.items, width, height, gap).map(r =>
-      `<div class="row">${r.tiles.map(t => tileHtml(t.item, t.aspect * r.h, r.h)).join("")}</div>`).join("");
+    const rows = sec.found ? `<div class="found-grid">${sec.items.map(i => tileHtml(i)).join("")}</div>`
+      : justify(sec.items, width, height, gap).map(r =>
+        `<div class="row">${r.tiles.map(t => tileHtml(t.item, t.aspect * r.h, r.h)).join("")}</div>`).join("");
     return `<section class="section" data-section="${n}"><div class="section-head">
       <button class="icon-btn sel${all ? " on" : ""}" data-select-section="${n}" title="Select all in this group">${icon(all ? "circleChecked" : "circle")}</button>
       <span>${esc(sec.title)}</span><span class="n">${sec.items.length}</span>${sec.hint ? `<span class="hint">${esc(sec.hint)}</span>` : ""}
@@ -996,6 +997,7 @@ function wire() {
       openItem(tile.dataset.key);
     }
   });
+  scrubFound($("grid"));
   let press = null, pressed = false;
   $("grid").addEventListener("pointerdown", e => {
     const tile = e.target.closest(".tile");
