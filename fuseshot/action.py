@@ -40,7 +40,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import log
+from . import composite, config, log
 from .files import write_atomic
 from .immich import ImmichError
 from .progress import Progress
@@ -478,8 +478,14 @@ def loop_from_frames(images, out_dir, delay, extra, log=LOG.info):
     size = (int((right - left) * scale) // 2 * 2, int((bottom - top) * scale) // 2 * 2)
     frames = [cv2.resize(f[top:bottom, left:right], size, interpolation=cv2.INTER_AREA)
               for f in frames]
-    return write_loop(frames, out_dir, delay, {**extra, "crop": [int(left), int(top), int(right), int(bottom)],
-                                               "shared": round(float(mask.mean()), 3)}, log)
+    extra = {**extra, "crop": [int(left), int(top), int(right), int(bottom)], "shared": round(float(mask.mean()), 3)}
+    if config.wants("composites"):
+        made = composite.write(frames, out_dir, log)
+        if made:
+            extra["composite"] = made
+    if "composite" not in extra:
+        (out_dir / composite.FILE).unlink(missing_ok=True)
+    return write_loop(frames, out_dir, delay, extra, log)
 
 
 def write_loop(frames, out_dir, delay, extra, log=LOG.info, poster_at=None):

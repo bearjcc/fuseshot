@@ -441,6 +441,20 @@ and written like a loop (`work/actions/wiggle-<asset>/`, 140 ms a frame). `run`
 makes them when wigglegrams are on in `[outputs]`; a photo that already has one,
 or that failed (`failed.json`), is skipped.
 
+### Action composites
+
+A burst from a camera that stayed still can also become one still with every
+moment of the subject in it (a stroboscopic or chronophotograph). When a loop is
+made, the median of its lined-up frames is the scene with the subject taken out;
+each frame's difference from it, cleaned of speckle, is where the subject was.
+Frames are picked from first to last whose subject does not overlap one already
+placed (at most 12), and those are pasted onto the background with a soft edge
+as `composite.jpg` next to the loop. No composite is made when fewer than three
+moments come out clear of each other, or when more than 30% of the frame moves
+(water, crowds). The viewer's composite button (C) switches between the loop and
+the composite; keeping the loop exports both. `composites = false` in
+`[outputs]` turns them off.
+
 ## Gaussian splats
 
     fuseshot splat --plan              # rank the sets, write work/splat_plan.json

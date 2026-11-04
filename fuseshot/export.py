@@ -92,22 +92,32 @@ def export(review, output, keys=None, log=LOG.info, dry_run=False, libraries=("f
             continue
         day = (item.get("taken") or "")[:10]
         word = "wigglegram" if item.get("style") == "wiggle" else KIND_WORDS[item["kind"]]
-        dest = output / f"{day} {item['id']} {word}{source.suffix}".strip()
-        if dry_run:
+        files = [(source, word)]
+        extra = source.with_name("composite.jpg")
+        if item["kind"] == "action" and item.get("composite") and extra.exists():
+            files.append((extra, "composite"))
+        for path, name in files:
+            dest = output / f"{day} {item['id']} {name}{path.suffix}".strip()
+            if dry_run:
+                log(f"{item['key']}: would copy to {dest}")
+            elif not copy(finished(review, item, path), path, dest):
+                continue
+            else:
+                log(f"{item['key']}: {dest}")
             written.append(dest)
-            log(f"{item['key']}: would copy to {dest}")
-            continue
-        data = finished(review, item, source)
-        if dest.exists() and dest.stat().st_size == len(data) and dest.stat().st_mtime >= source.stat().st_mtime:
-            continue
-        output.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_name("." + dest.name + ".part")
-        try:
-            tmp.write_bytes(data)
-            os.replace(tmp, dest)
-        except BaseException:
-            tmp.unlink(missing_ok=True)
-            raise
-        written.append(dest)
-        log(f"{item['key']}: {dest}")
     return written
+
+
+def copy(data, source, dest):
+    """Write data to dest unless it is already there; whether it was written."""
+    if dest.exists() and dest.stat().st_size == len(data) and dest.stat().st_mtime >= source.stat().st_mtime:
+        return False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name("." + dest.name + ".part")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return True

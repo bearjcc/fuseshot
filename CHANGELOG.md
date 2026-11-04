@@ -9,6 +9,9 @@
   button to start the first scan. `[outputs]` in `fuseshot.toml` turns kinds off.
 - Wigglegrams of stereo photos (MPO files and side-by-side JPEGs from an XREAL
   Beam Pro), lined up on the subject and reviewed like loops.
+- Action composites: a burst from a still camera also becomes one still with
+  each clear moment of the subject on the background, shown beside the loop
+  and exported with it.
 
 ## 0.1.0
 

@@ -390,6 +390,9 @@ const viewer = {
     document.querySelectorAll("[data-decide]").forEach(b => b.classList.toggle("chosen", b.dataset.decide === item.decision));
     $("vundo").disabled = !state.undo.length;
     $("vcompare").hidden = !(item.before || item.previous);
+    $("vcomposite").hidden = !item.composite;
+    $("vcomposite").classList.remove("on");
+    this.composite = false;
     $("vdoedit").classList.toggle("chosen", item.decision === "editing");
     $("vsphere").hidden = true;
     $("vstrip").hidden = !(setting("strip") === "1" && item.kind === "stitch");
@@ -606,6 +609,19 @@ const viewer = {
       $("vbadge").hidden = true;
     }
     $("vcompare").classList.toggle("on", on);
+  },
+  toggleComposite() {
+    const item = this.item;
+    if (!item?.composite) return;
+    this.composite = !this.composite;
+    $("vcomposite").classList.toggle("on", this.composite);
+    if (this.composite) {
+      this.setImage(item.composite, item.w, item.h, item.composite);
+      this.badge("Action composite: every moment in one still");
+    } else {
+      this.setImage(item.screen, item.w, item.h, item.full);
+      $("vbadge").hidden = true;
+    }
   },
   showFrame(frame) {
     if (this.frame === frame.index) { this.frame = null; this.changeView(); $("vbadge").hidden = true; renderStrip(); return; }
@@ -895,7 +911,7 @@ const SHORTCUTS = [
     [["K"], "Keep and go on"], [["D"], "Discard and go on"], [["E"], "Edit: type, model, view, crop, AI fill"],
     [["Space"], "Skip, decide later"], [["U"], "Undo the last decision"], [["←", "→"], "Previous or next"],
     [["I"], "Show or hide info"], [["O"], "Show the original frames"], [["B"], "Hold to compare with the earlier version"],
-    [["V"], "View as a sphere"], [["Z"], "Zoom in or out"], [["X"], "Select"], [["Esc"], "Close"],
+    [["V"], "View as a sphere"], [["C"], "Loop or action composite"], [["Z"], "Zoom in or out"], [["X"], "Select"], [["Esc"], "Close"],
   ]],
   ["Grid", [
     [["Enter"], "Review one by one"], [["Ctrl", "A"], "Select all shown"], [["Shift", "click"], "Select a range"],
@@ -929,7 +945,7 @@ function onKey(e) {
       ArrowLeft: () => viewer.show(viewer.index - 1, -1), ArrowRight: () => viewer.show(viewer.index + 1, 1),
       " ": () => viewer.skip(),
       k: () => viewer.decideCurrent("kept"), d: () => viewer.decideCurrent("discarded"),
-      u: undo, i: () => togglePanel(), o: toggleStrip, v: () => viewer.toggleSphere(), z: () => viewer.toggleZoom(),
+      u: undo, i: () => togglePanel(), o: toggleStrip, v: () => viewer.toggleSphere(), c: () => viewer.toggleComposite(), z: () => viewer.toggleZoom(),
       e: () => viewer.editCurrent(), x: () => { toggleSelect(viewer.item.key); viewer.paint(); },
       b: () => { if (!e.repeat) viewer.setCompare(!viewer.compare); },
       Escape: () => {
@@ -1106,6 +1122,7 @@ function wire() {
   $("vundo").onclick = undo;
   $("vskip").onclick = () => viewer.skip();
   $("vdoedit").onclick = () => viewer.editCurrent();
+  $("vcomposite").onclick = () => viewer.toggleComposite();
   $("vselect").onclick = () => { toggleSelect(viewer.item.key); viewer.paint(); };
   const compare = $("vcompare");
   compare.addEventListener("pointerdown", () => { viewer.compareAt = performance.now(); viewer.setCompare(true); });

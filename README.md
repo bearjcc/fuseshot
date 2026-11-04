@@ -58,7 +58,8 @@ All the photos are public domain (CC0) from Wikimedia Commons; see
    to see how the photos really overlap, and drops sets that don't.
 3. **Makes things.** Panoramas are stitched with [Hugin](https://hugin.sourceforge.io)
    in several projections. Group shots get each person's best face. Action
-   sequences become looping animations, and stereo photos become wigglegrams.
+   sequences become looping animations and, from a still camera, one composite
+   still with every moment in it. Stereo photos become wigglegrams.
    Scans with enough parallax can be posed with COLMAP and trained into a splat
    with Brush.
 4. **Lets you choose.** A local web page shows every result with the photos it came

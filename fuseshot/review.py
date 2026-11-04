@@ -46,7 +46,7 @@ SET_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 FILE_NAME = re.compile(r"^[a-z-]+(_crop|_fill|_fillshow)?\.jpg$")
 VARIANTS = ("_crop", "_fill", "_fillshow")
 LOOP_FILES = {"animation.webp": "image/webp", "animation.mp4": "video/mp4",
-              "animation.gif": "image/gif", "poster.jpg": "image/jpeg"}
+              "animation.gif": "image/gif", "poster.jpg": "image/jpeg", "composite.jpg": "image/jpeg"}
 OVERRIDE_MODELS = ("auto", "rotation", "mosaic", "sfm")
 SET_TYPES = ("panorama", "object scan", "action", "group", "not")
 MAKES = {"panorama": "stitch", "object scan": "splat", "action": "loop", "group": "best-shot merge",
@@ -1334,8 +1334,8 @@ class Review:
         version = int((loop_dir / "animation.webp").stat().st_mtime) if (loop_dir / "animation.webp").exists() else 0
         downloads = "".join(
             f"<a href='{self.base}/loop/{key}/{name}?v={version}' target='_blank' data-icon='openInNew'>"
-            f"<span>{name.split('.')[1].upper()}</span></a>"
-            for name in ("animation.webp", "animation.mp4", "animation.gif") if (loop_dir / name).exists())
+            f"<span>{'Composite' if name == 'composite.jpg' else name.split('.')[1].upper()}</span></a>"
+            for name in ("animation.webp", "animation.mp4", "animation.gif", "composite.jpg") if (loop_dir / name).exists())
         details = {k: v for k, v in check.items() if k != "pairs"}
         static_version = max(int((WEB_DIR / name).stat().st_mtime) for name in WEB_FILES)
         return LOOP_PAGE.format(
@@ -1799,6 +1799,8 @@ class Review:
             "link": c.get("best_link") or c.get("first_link"), **library_fields(c),
             "reason": actions.get(key, {}).get("reason") or c.get("reason") or info.get("reason"),
             "name": c.get("name"), "style": info.get("style") or "loop",
+            "composite": f"{self.base}/loop/{key}/composite.jpg?v={version}"
+            if info.get("composite") and (loop_dir / "composite.jpg").exists() else None,
             "flags": [f[0] for f in flags], "score": sum(f[1] for f in flags),
             **self.decision_fields(decisions, key, "action"),
         }
