@@ -11,9 +11,9 @@ from pathlib import Path
 
 SETTINGS_NAME = "fuseshot.toml"
 KNOWN_KEYS = ("output", "sources", "outputs", "upload", "tools", "models", "jobs", "max_megapixels", "crop")
-OUTPUTS = ("panoramas", "splats", "loops", "groups", "wigglegrams", "composites", "enhance")
+OUTPUTS = ("panoramas", "splats", "loops", "groups", "wigglegrams", "composites", "enhance", "colourise")
 # Results that are only made once turned on.
-OFF_BY_DEFAULT = ("enhance",)
+OFF_BY_DEFAULT = ("enhance", "colourise")
 _home = None
 _settings = None
 

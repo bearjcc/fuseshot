@@ -29,6 +29,7 @@ OUTPUTS = {
     "wigglegrams": {"label": "Wigglegrams from stereo photos", "ffmpeg": True},
     "composites": {"label": "Action composites"},
     "enhance": {"label": "Enhance candidates (photos restoration could help)"},
+    "colourise": {"label": "Suggest colourising black-and-white scans (optional model pack)"},
 }
 
 
