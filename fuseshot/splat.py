@@ -24,7 +24,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import formats, limits, log, tools
+from . import formats, limits, log, rig, tools
 from .files import write_atomic
 from .group import is_group
 
@@ -99,8 +99,9 @@ def set_kind(candidate):
     return None
 
 
-def make_plan(candidates_file, cache_dir, min_parallax=4, types_file=None):
-    """Object scans first, then walks and mixed-motion sets with enough parallax, best first.
+def make_plan(candidates_file, cache_dir, min_parallax=4, types_file=None, work_dir=None):
+    """Object scans first, then sets from stereo videos, then walks and mixed-motion sets with
+    enough parallax, best first.
     Group photo sets are left out; they become best-shot merges."""
     from .fetch import asset_ids
 
@@ -136,7 +137,9 @@ def make_plan(candidates_file, cache_dir, min_parallax=4, types_file=None):
             "places": c.get("places") or "", "score": round(score, 2),
             "skip": "; ".join(reasons),
         })
-    order = {"object scan": 0, "mixed motion": 1, "walk": 2}
+    if work_dir:
+        rows += video_rows(work_dir)
+    order = {"object scan": 0, "stereo video": 1, "mixed motion": 2, "walk": 3}
     rows.sort(key=lambda r: (bool(r["skip"]), order[r["kind"]], -r["score"]))
     return {"made": now(), "gate": gate_settings(), "sets": rows}
 
@@ -176,33 +179,78 @@ def prepare(work_dir, set_id, candidates_file, immich_factory):
     candidate = load_candidate(candidates_file, set_id)
     junk = set(candidate.get("junk_frames") or [])
     manifest = manifest_for(immich_factory, candidates_file, work_dir, set_id)
+    manifest = [m for m in manifest if m["index"] not in junk]
+    pairs = {m["index"]: rig.views(resolve(work_dir, m["image"]), m.get("make")) for m in manifest}
+    paired = bool(manifest) and all(v is not None for v in pairs.values())
     frames = []
     for m in manifest:
-        if m["index"] in junk:
-            continue
-        target = images / f"{m['index']:03d}.jpg"
-        if not target.exists():
-            with Image.open(resolve(work_dir, m["image"])) as im:
-                exif = im.getexif()
+        f35 = m.get("f35") or m.get("f35_hint")
+        name = f"{m['index']:03d}.jpg"
+        with Image.open(resolve(work_dir, m["image"])) as im:
+            exif = im.getexif()
+            exif[0x0112] = 1
+            if f35:
+                exif.get_ifd(0x8769)[0xA405] = int(round(float(f35)))
+            if paired:
+                (file, size), (pair, _) = rig.write_pair(*pairs[m["index"]], images, name, LONG_SIDE, exif.tobytes())
+                frames.append({"index": m["index"], "file": file, "pair": pair, "asset_id": m["asset_id"],
+                               "size": size, "f35": f35})
+                continue
+            target = images / name
+            if not target.exists():
+                if pairs[m["index"]] is not None:
+                    im = Image.fromarray(pairs[m["index"]][0][:, :, ::-1])
                 im = ImageOps.exif_transpose(im).convert("RGB")
                 im.thumbnail((LONG_SIDE, LONG_SIDE), Image.LANCZOS)
-                exif[0x0112] = 1
-                f35 = m.get("f35") or m.get("f35_hint")
-                if f35:
-                    exif.get_ifd(0x8769)[0xA405] = int(round(float(f35)))
                 tmp = target.with_suffix(".tmp")
                 im.save(tmp, "JPEG", quality=93, exif=exif.tobytes())
                 os.replace(tmp, target)
         with Image.open(target) as im:
             size = im.size
         frames.append({"index": m["index"], "file": target.name, "asset_id": m["asset_id"], "size": size,
-                       "f35": m.get("f35") or m.get("f35_hint")})
+                       "f35": f35})
     info = {"set_id": set_id, "frames": frames, "junk_frames": sorted(junk), "long_side": LONG_SIDE,
             "prepared": now()}
+    if paired:
+        info["rig"] = {"baseline_m": rig.BASELINE_M}
     write_json(out / "frames.json", info)
     LOG.info(f"{set_id}: {len(frames)} frames ready in {images}")
     return info
 
+
+
+def from_stereo_video(work_dir, video, set_id=None):
+    """A set made from a side-by-side stereo video, ready for SfM; its frames.json."""
+    video = Path(video)
+    set_id = set_id or "SV-" + re.sub(r"[^A-Za-z0-9_-]+", "-", video.stem).strip("-")
+    out = splat_dir(work_dir, set_id)
+    if (out / "images").exists():
+        shutil.rmtree(out / "images")
+    try:
+        frames = rig.video_pairs(video, out / "images", LONG_SIDE)
+    except ValueError as err:
+        raise SplatError(str(err)) from err
+    if len(frames) < MIN_FRAMES:
+        raise SplatError(f"{set_id}: only {len(frames)} frames in {video.name}")
+    info = {"set_id": set_id, "frames": frames, "junk_frames": [], "long_side": LONG_SIDE,
+            "rig": {"baseline_m": rig.BASELINE_M}, "video": video.name, "prepared": now()}
+    write_json(out / "frames.json", info)
+    LOG.info(f"{set_id}: {len(frames)} stereo pairs from {video.name}")
+    return info
+
+
+def video_rows(work_dir):
+    """Plan rows for the sets made from stereo videos."""
+    rows = []
+    for path in sorted((Path(work_dir) / "splats").glob("*/frames.json")):
+        info = read_json(path, {})
+        if info.get("video"):
+            count = len(info.get("frames") or [])
+            rows.append({"set_id": info["set_id"], "kind": "stereo video", "frames": count, "usable": count,
+                         "junk_frames": [], "parallax_pairs": count, "sequential_overlap": 1.0,
+                         "sharpness": None, "camera": "", "taken": "", "places": info["video"],
+                         "score": float(count), "skip": ""})
+    return rows
 
 
 class SetLock:
@@ -359,15 +407,23 @@ def sfm(work_dir, set_id, gpu=None, threads=4, force=False):
                    "--FeatureExtraction.use_gpu", int(gpu), "--FeatureExtraction.num_threads", threads,
                    "--FeatureExtraction.max_image_size", LONG_SIDE,
                    "--SiftExtraction.max_num_features", 8192 if gpu else 4096]
-        if len(sizes) == 1:
+        paired = bool(frames.get("rig"))
+        if paired:
+            extract += ["--ImageReader.single_camera_per_folder", 1]
+        elif len(sizes) == 1:
             extract += ["--ImageReader.single_camera", 1]
+        if len(sizes) == 1:
             (w, h), = sizes
             f35, = f35s if len(f35s) == 1 else (None,)
             if f35:
                 focal = float(f35) / 36.0 * max(w, h)
                 extract += ["--ImageReader.camera_params", f"{focal:.2f},{w / 2:.1f},{h / 2:.1f},0"]
+        configure = ["rig_configurator", "--database_path", db, "--rig_config_path",
+                     rig.config_file(work / "rig_config.json", frames["rig"]["baseline_m"])] if paired else None
         try:
             colmap(extract, log)
+            if configure:
+                colmap(configure, log)
             colmap(["exhaustive_matcher", "--database_path", db, "--FeatureMatching.use_gpu", int(gpu),
                     "--FeatureMatching.num_threads", threads, "--FeatureMatching.guided_matching", 1], log)
         except SplatError as err:
@@ -380,6 +436,8 @@ def sfm(work_dir, set_id, gpu=None, threads=4, force=False):
             extract[extract.index("--FeatureExtraction.use_gpu") + 1] = "0"
             extract[extract.index("--SiftExtraction.max_num_features") + 1] = "4096"
             colmap(extract, log)
+            if configure:
+                colmap(configure, log)
             colmap(["exhaustive_matcher", "--database_path", db, "--FeatureMatching.use_gpu", 0,
                     "--FeatureMatching.num_threads", threads, "--FeatureMatching.guided_matching", 1], log)
         sparse = work / "sparse"
@@ -387,7 +445,8 @@ def sfm(work_dir, set_id, gpu=None, threads=4, force=False):
         mapper_error = None
         try:
             colmap(["mapper", "--database_path", db, "--image_path", out / "images", "--output_path", sparse,
-                    "--Mapper.num_threads", threads, "--Mapper.min_model_size", 5], log)
+                    "--Mapper.num_threads", threads, "--Mapper.min_model_size", 5]
+                   + (["--Mapper.ba_refine_sensor_from_rig", 0] if paired else []), log)
         except SplatError as err:
             mapper_error = str(err).splitlines()[-1].strip()
         models = []
@@ -395,7 +454,7 @@ def sfm(work_dir, set_id, gpu=None, threads=4, force=False):
             stats = analyse(model, log)
             stats["model"] = model.name
             models.append(stats)
-        total = len(frames["frames"])
+        total = len(frames["frames"]) * (2 if paired else 1)
         result = {"set_id": set_id, "images": total, "device": "gpu" if gpu else "cpu", "threads": threads,
                   "models": models, "gate": gate_settings(), "at": now()}
         best = max(models, key=lambda m: (m.get("registered", 0), -m.get("mean_reprojection_error_px", 99)),
@@ -501,8 +560,9 @@ def holdout_quality(eval_dir, images_dir):
     from PIL import Image
 
     views = []
-    for render_path in sorted(Path(eval_dir).glob("*.png")):
-        photos = sorted(Path(images_dir).glob(render_path.stem + ".*"))
+    for render_path in sorted(Path(eval_dir).rglob("*.png")):
+        relative = render_path.relative_to(eval_dir).with_suffix("")
+        photos = sorted(Path(images_dir).glob(f"{relative.as_posix()}.*"))
         if not photos:
             continue
         render = Image.open(render_path).convert("RGB")
@@ -676,7 +736,7 @@ def run(args, immich_factory):
     work = args.work
     plan_file = work / "splat_plan.json"
     if args.plan:
-        plan = make_plan(args.candidates, args.cache, types_file=work / "types.json")
+        plan = make_plan(args.candidates, args.cache, types_file=work / "types.json", work_dir=work)
         write_json(plan_file, plan)
         if not plan["sets"]:
             print("No object scan, walk or mixed sets to make splats from.")
@@ -688,6 +748,8 @@ def run(args, immich_factory):
     if args.status:
         status(work, plan_file)
         return
+    if args.stereo_video:
+        args.sets = [from_stereo_video(work, args.stereo_video)["set_id"]] + list(args.sets or [])
     if args.sets and args.sfm:
         tools.require("colmap")
     if args.sets and args.train:

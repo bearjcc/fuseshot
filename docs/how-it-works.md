@@ -477,6 +477,21 @@ registered, with a mean reprojection error of 1.5 px or less. The result, pass o
 fail with the reason, is in `sfm.json` and on the review page. Passing models are
 undistorted into `dataset/` for training.
 
+### Stereo sets
+
+    fuseshot splat --stereo-video SV_20250601_153000.mp4 --train
+
+When every photo in a set is a stereo photo (an MPO, or a side-by-side shot from
+an XREAL Beam Pro), both views go in: the left ones in `images/left/`, the right
+ones in `images/right/` under the same names. COLMAP gets one camera per folder,
+and `rig_configurator` ties each pair into one frame with the right lens 50 mm to
+the side of the left (`rig_config.json`). The mapper keeps that offset fixed, so
+the model is roughly in metres when the baseline is right. A set where only some
+photos are stereo uses their left view, like any other photo. A side-by-side
+video becomes its own set (`SV-<name>`): about 4 frames a second, at most 60
+pairs, posed the same way. It joins the plan as a stereo video, after object
+scans.
+
 Brush trains 7000 steps by default with at most 2 million splats at 1600 px, and
 writes a checkpoint every 1000 steps to `train/`. A stopped run picks up from the
 last checkpoint. The finished model is converted to `scene.splat` (32 bytes a splat,

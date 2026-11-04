@@ -797,6 +797,8 @@ def main(argv=None):
     p.add_argument("--sfm", action="store_true", help="find camera poses and apply the confidence gate")
     p.add_argument("--train", action="store_true", help="train a splat (runs the earlier steps if needed)")
     p.add_argument("--convert", action="store_true", help="write scene.splat from the latest export")
+    p.add_argument("--stereo-video", type=Path, metavar="VIDEO",
+                   help="make a set from a side-by-side stereo video (both views, posed as a rig)")
     p.add_argument("--force", action="store_true", help="redo SfM even if it has a result")
     p.add_argument("--gpu", action="store_const", const=True, default=None,
                    help="COLMAP on the GPU (default: when an NVIDIA card and a CUDA build of COLMAP are found)")

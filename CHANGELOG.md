@@ -12,6 +12,8 @@
 - Action composites: a burst from a still camera also becomes one still with
   each clear moment of the subject on the background, shown beside the loop
   and exported with it.
+- Splats from stereo photos and side-by-side stereo video: both views, posed by
+  COLMAP as a two-camera rig with a fixed 50 mm baseline.
 
 ## 0.1.0
 
