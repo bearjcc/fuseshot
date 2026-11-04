@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
-from . import assets, jobs, log, settings_web, stitch, tools
+from . import assets, config, jobs, log, settings_web, stitch, tools
 from .events import Changes
 from .files import read_text, write_atomic
 from .found import Found
@@ -2063,12 +2063,51 @@ class Review:
         page = (WEB_DIR / "review.html").read_text(encoding="utf-8")
         return (page.replace("__BASE__", html.escape(self.base)).replace("__V__", str(version))
                 .replace("__BASE_SCRIPT__", base_script(self.base))
+                .replace("__ENHANCE_HIDDEN__", "" if config.wants("enhance") else " hidden")
                 .replace("__IMPORT_MAP__", import_map.replace("</", "<\\/")))
 
     def web_file(self, name):
         if name not in WEB_FILES:
             raise KeyError(name)
         return WEB_DIR / name
+
+    def enhance_dir(self):
+        return self.work_dir / "enhance"
+
+    def enhance_page(self):
+        """The photos restoration could help most, read-only, biggest expected gain first."""
+        from . import enhance
+
+        found = enhance.load(self.enhance_dir())
+        esc = html.escape
+        rows = "".join(
+            f"<tr><td><img class='thumb' loading='lazy' alt='' src='{self.base}/enhancefile/{esc(r['id'])}.jpg'></td>"
+            f"<td><b>{r['gain']:.0f}</b></td><td>{esc(r.get('file_name') or '')}<br><span class='dim'>"
+            f"{esc((r.get('taken') or '')[:10])} {esc(r['id'])}</span></td>"
+            f"<td>{'<br>'.join(esc(x) for x in r['reasons'])}</td><td>{esc(' > '.join(r['chain']))}</td></tr>"
+            for r in found["candidates"])
+        note = ("" if config.wants("enhance") else
+                "<p>Enhance is turned off in <a href='" + self.base + "/settings'>Settings</a>.</p>")
+        empty = "<p class='dim'>No candidates yet. Run <code>fuseshot enhance-scan</code>.</p>"
+        return (
+            "<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
+            "<title>Enhance candidates</title>" + INDEX_STYLE + base_script(self.base) +
+            f"<h2>Enhance candidates</h2><p><a href='{self.base}/'>Back to the review grid</a></p>{note}"
+            f"<p class='dim'>{found['scored']} photos scored, {found['fine']} look fine. Expected gain is out of "
+            "100. This list only reads your photos; nothing is changed or uploaded.</p>"
+            + (f"<table id='enhance'><tr><th></th><th>Gain</th><th>Photo</th><th>Why</th><th>Suggested steps</th></tr>"
+               f"{rows}</table>" if rows else empty))
+
+    def enhance_file(self, name):
+        from . import enhance
+
+        asset_id = name.removesuffix(".jpg")
+        if not name.endswith(".jpg") or not asset_id.replace("-", "").isalnum():
+            raise KeyError(name)
+        path = enhance.thumb_path(self.enhance_dir(), asset_id)
+        if not path.exists():
+            raise KeyError(name)
+        return path
 
     def index_page(self, query=""):
         return (
@@ -2320,6 +2359,10 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send_json(200, {**found, "can_change": self.may_change_settings()})
                 elif parts == ["api", "settings", "outputs"]:
                     return self.send_json(200, settings_web.output_status())
+                elif parts == ["enhance"]:
+                    return self.send(200, review.enhance_page())
+                elif parts[0] == "enhancefile" and len(parts) == 2:
+                    return self.send_file(review.enhance_file(parts[1]), False)
                 elif parts == ["tables"]:
                     return self.send(200, review.index_page(query))
                 elif parts == ["api", "items"]:
