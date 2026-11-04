@@ -523,24 +523,27 @@ whether they were found.
 it fetches each photo's preview (about 1440 px) and, for JPEGs, the first 64 KB of the
 original, and changes nothing in Immich or the folders.
 
-Each photo gets a few cheap CPU checks:
+Each photo gets a few cheap CPU checks. A problem counts only when a fix would show:
 
-| Check | How | Suggested step |
-|---|---|---|
-| Dust and scratches | small, sharp light or dark marks from a morphological top-hat, only on faded or black-and-white photos | inpaint (LaMa) |
-| JPEG blocking | the libjpeg quality that matches the luminance table in the original's header | JPEG artefact removal (FBCNN) |
-| Noise | Immerkær's fast noise estimate on the flatter parts of the preview | denoise (SCUNet) |
-| Softness | variance of the Laplacian, skipped for scenes with few edges | deblur (NAFNet) |
-| Faded or black and white | mean chroma and hue in Lab; stronger when the photo has no camera details, as scans usually don't | colourise (DDColor), optional |
-| Low resolution | the original's long side against 2400 px | upscale (Real-ESRGAN) |
+| Check | How | Counts when | Suggested step |
+|---|---|---|---|
+| Dust and scratches | small, sharp light or dark marks from a morphological top-hat | black-and-white or faded photos with marks on over 0.3% of the picture | inpaint (LaMa) |
+| JPEG blocking | for originals saved below quality 85, the jump across 8×8 block edges against the jump inside blocks, on the original | over 1.6 times | JPEG artefact removal (FBCNN) |
+| Noise | Immerkær's fast noise estimate on the flatter parts of the preview, scaled to the original's size | over 2 grey levels | denoise (SCUNet) |
+| Softness | variance of the Laplacian, skipped for scenes with few edges | under 60 | deblur (NAFNet) |
+| Low resolution | the original's long side | under 1000 px, growing steadily to the most at 300 px | upscale (Real-ESRGAN) |
+| Black and white | mean chroma and hue in Lab, and no camera details | only with `colourise = true` under `[outputs]`, since DDColor comes in the optional model pack | colourise (DDColor) |
 
-Each problem has a severity from 0 to 1 and a weight; the expected gain is
-`100 × (1 − Π(1 − weight × severity))`. Photos under 15 are taken as fine. Scores are
-appended to `work/enhance/scores.jsonl` one photo at a time, so a scan can be stopped
-(`work/batch.stop`) and run again, and it skips photos already scored. The best 500 go
-to `work/enhance/candidates.json`, biggest gain first, with the suggested chain and the
-reasons. `--limit N` scores only the newest N photos.
+Each problem has a severity from 0 to 1 and a weight for how much its fix shows. Only
+the three biggest count, and only those worth at least 10 points; the expected gain is
+`100 × (1 − Π(1 − weight × severity))` over them. Photos under 50 are taken as fine.
+Scores and measurements are appended to `work/enhance/scores.jsonl` one photo at a time, so
+a scan can be stopped (`work/batch.stop`) and run again, and it skips photos already
+scored. The ranking is worked out again from the measurements each time, so turning
+colourise on or off needs no new scan. The best 500 go to `work/enhance/candidates.json`,
+biggest gain first, with the suggested chain and the reasons. `--limit N` scores only the
+newest N photos.
 
-The review page lists them under Enhance candidates in the sidebar. No model runs yet
-and no no-reference quality model is used: the usual ones (pyiqa with MUSIQ or CLIP-IQA
+The review page lists them under Enhance candidates in the sidebar. No model runs yet, no face restorer is
+suggested (none has a permissive licence), and no no-reference quality model is used: the usual ones (pyiqa with MUSIQ or CLIP-IQA
 weights) are under non-commercial licences.
