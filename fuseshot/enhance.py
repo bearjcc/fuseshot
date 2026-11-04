@@ -22,7 +22,7 @@ import cv2
 import numpy as np
 
 LOG = logging.getLogger("fuseshot")
-VERSION = 1
+VERSION = 2
 SIDE = 1024
 THUMB_SIDE = 320
 MIN_GAIN = 15
@@ -105,7 +105,7 @@ def colour_look(img):
         return "mono", chroma
     spread = float(np.std(np.degrees(np.arctan2(b, a))[np.hypot(a, b) > 2])) if (np.hypot(a, b) > 2).any() else 0
     hue = float(np.degrees(np.arctan2(b.mean(), a.mean())))
-    if chroma < 14 and 40 < hue < 95 and spread < 25:
+    if chroma < 30 and 40 < hue < 95 and spread < 20:
         return "sepia", chroma
     return None, chroma
 
@@ -122,6 +122,14 @@ def specks(grey):
     return float(small.sum() / grey.size)
 
 
+def original_noise(img, size=None):
+    """Noise in the original, in grey levels. The preview is a shrunk copy, which averages
+    white noise down by about the shrink factor, so the estimate is scaled back up."""
+    preview = shrink(img, 1600)
+    factor = max(size) / max(preview.shape[:2]) if size and all(size) else 1.0
+    return noise_sigma(cv2.cvtColor(preview, cv2.COLOR_BGR2GRAY)) * min(4.0, max(1.0, factor))
+
+
 def measure(img, head=None, size=None):
     """The measurements for one photo: img is its preview (BGR), head the first bytes of the
     original (for the JPEG tables) and size its (width, height)."""
@@ -132,8 +140,7 @@ def measure(img, head=None, size=None):
     return {
         "laplacian": round(lap, 1),
         "edges": round(edges, 4),
-        # At the preview's own size: shrinking first would average the noise away.
-        "noise": round(noise_sigma(cv2.cvtColor(shrink(img, 1600), cv2.COLOR_BGR2GRAY)), 2),
+        "noise": round(original_noise(img, size), 2),
         "jpeg_quality": jpeg_quality(head) if head else None,
         "look": look,
         "chroma": round(chroma, 1),
@@ -148,8 +155,8 @@ def problems(m, camera=True):
     q = m.get("jpeg_quality")
     if q is not None and q < 75:
         found["jpeg"] = (clip01((75 - q) / 45), f"JPEG saved at quality {q}")
-    if m["noise"] > 2.5:
-        found["noise"] = (clip01((m["noise"] - 2.5) / 6), f"noise around {m['noise']:.1f} levels")
+    if m["noise"] > 1.5:
+        found["noise"] = (clip01((m["noise"] - 1.5) / 3), f"noise around {m['noise']:.1f} levels")
     if m["laplacian"] < 120 and m["edges"] > 0.01:
         found["blur"] = (clip01((120 - m["laplacian"]) / 110), f"soft detail (sharpness {m['laplacian']:.0f})")
     long_side = m.get("long_side")
