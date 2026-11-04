@@ -155,3 +155,15 @@ def test_chains_stay_short_and_rank_rescores_from_measurements(tmp_path):
                                   "measures": m}) + "\n")
     found = enhance.rank(scores, tmp_path / "c.json", colourise=False)
     assert found["candidates"][0]["gain"] > 50 and "ddcolor" not in found["candidates"][0]["chain"]
+
+
+def test_screenshots_and_drawings_are_left_out(tmp_path):
+    m = {"laplacian": 300, "edges": 0.1, "noise": 0.2, "blockiness": None, "look": "mono", "specks": 0.02,
+         "long_side": 400, "camera": False}
+    rows = [{"v": enhance.VERSION, "id": name, "file_name": name, "gain": 0, "chain": [], "reasons": [],
+             "measures": {**m, "camera": camera}} for name, camera in
+            (("Screenshot.png", False), ("scan.jpg", False), ("phone.png", True))]
+    scores = tmp_path / "scores.jsonl"
+    scores.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    found = enhance.rank(scores, tmp_path / "c.json", colourise=False)
+    assert sorted(r["id"] for r in found["candidates"]) == ["phone.png", "scan.jpg"]

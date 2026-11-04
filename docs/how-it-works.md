@@ -536,7 +536,8 @@ Each photo gets a few cheap CPU checks. A problem counts only when a fix would s
 
 Each problem has a severity from 0 to 1 and a weight for how much its fix shows. Only
 the three biggest count, and only those worth at least 10 points; the expected gain is
-`100 × (1 − Π(1 − weight × severity))` over them. Photos under 50 are taken as fine.
+`100 × (1 − Π(1 − weight × severity))` over them. Photos under 50 are taken as fine, and so are PNG, GIF and WebP files with no camera
+details, which are mostly screenshots, memes and drawings.
 Scores and measurements are appended to `work/enhance/scores.jsonl` one photo at a time, so
 a scan can be stopped (`work/batch.stop`) and run again, and it skips photos already
 scored. The ranking is worked out again from the measurements each time, so turning

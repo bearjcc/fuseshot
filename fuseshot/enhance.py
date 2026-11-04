@@ -39,6 +39,7 @@ BLOCKY = 1.6
 SPECKS = 0.003
 # How much of the original is read to look for blocking in a low-quality JPEG.
 ORIGINAL_BYTES = 6 << 20
+GRAPHIC_TYPES = (".png", ".gif", ".webp")
 STEPS = {
     "scratches": ("lama", "Paint out dust and scratches"),
     "jpeg": ("fbcnn", "Remove JPEG blocking"),
@@ -271,9 +272,9 @@ def score_one(library, photo):
         original = original[1] if isinstance(original, tuple) else original
     m = measure(img, head, photo["size"], original)
     m["camera"] = photo["camera"]
-    gain, chain, reasons = score(m, photo["camera"], colourise_on())
-    return img, {"v": VERSION, "id": photo["id"], "file_name": photo["file_name"], "taken": photo["taken"],
-                 "gain": gain, "chain": chain, "reasons": reasons, "measures": m}
+    row = {"v": VERSION, "id": photo["id"], "file_name": photo["file_name"], "taken": photo["taken"], "measures": m}
+    rescore(row, colourise_on())
+    return img, row
 
 
 def scan(db_path, library, out_dir, limit=None, stop_file=None):
@@ -311,10 +312,18 @@ def colourise_on():
     return config.wants("colourise")
 
 
+def graphic(file_name, camera):
+    """A lossless or animated file with no camera details: a screenshot, meme or drawing more
+    often than a photo, and not something restoration would help."""
+    return not camera and str(file_name).lower().endswith(GRAPHIC_TYPES)
+
+
 def rescore(row, colourise=False):
     m = row.get("measures")
     if m:
         row["gain"], row["chain"], row["reasons"] = score(m, m.get("camera", True), colourise)
+        if graphic(row.get("file_name", ""), m.get("camera", True)):
+            row["gain"], row["chain"], row["reasons"] = 0.0, [], []
 
 
 def write_thumb(img, path):
