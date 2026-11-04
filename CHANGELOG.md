@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `fuseshot enhance-scan` ranks photos that restoration could help (blur,
+  noise, JPEG quality, low resolution, faded scans, dust), with a suggested chain
+  of steps and the reasons, listed read-only on the review page. Off by default.
 - A setup page the first time the review page opens with nothing set up, and
   Settings in the sidebar after that: Immich address and key (with a connection
   test), photo folders (with a folder browser), the output folder, and which
