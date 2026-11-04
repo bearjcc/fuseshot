@@ -53,37 +53,48 @@ def discard_found(work, set_id):
     path.write_text(json.dumps(data))
 
 
-def test_feeder_keeps_a_short_window_and_drops_discarded_sets(tmp_path, monkeypatch):
+def test_feeder_keeps_a_short_window_and_drops_discarded_sets(tmp_path):
     runner = FakeRunner()
     discard_found(tmp_path, "P5")
-    done = []
-    feeder = feed.Feeder(runner, plan(tmp_path, ["P1", "P2", "P3", "P4", "P5", "P6"]), tmp_path,
-                         lambda key: ["batch", "--sets", key], window=2, on_done=lambda: done.append(1), poll_s=0)
-    sleeps = []
+    done, polls = [], []
 
-    def sleep(seconds):
-        sleeps.append(seconds)
-        if len(sleeps) == 1:  # P2 is waiting on the queue when its set is discarded
+    def poll(seconds):
+        # Stands in for the wait between polls, so the test owns every step.
+        polls.append(seconds)
+        if len(polls) == 1:  # P2 is waiting on the queue when its set is discarded
             discard_found(tmp_path, "P2")
         else:
             runner.step()
 
-    monkeypatch.setattr(feed.time, "sleep", sleep)
+    feeder = feed.Feeder(runner, plan(tmp_path, ["P1", "P2", "P3", "P4", "P5", "P6"]), tmp_path,
+                         lambda key: ["batch", "--sets", key], window=2, on_done=lambda: done.append(1),
+                         poll_s=0, sleep=poll)
     feeder.fill()
     assert runner.submitted == ["stitch-P1", "stitch-P2"]
     feeder.run()
     assert runner.cancelled == [2]
     assert runner.submitted == ["stitch-P1", "stitch-P2", "stitch-P3", "stitch-P4", "stitch-P6"]
     assert len(done) == 6
+    assert all(p == 0 for p in polls)
 
 
-def test_feeder_leaves_finished_sets_and_stops_on_the_stop_file(tmp_path, monkeypatch):
+def test_the_feeder_waits_with_the_sleep_it_was_given(tmp_path, monkeypatch):
     runner = FakeRunner()
-    monkeypatch.setattr(feed.time, "sleep", lambda seconds: runner.step())
+    monkeypatch.setattr(feed.time, "sleep", lambda seconds: (_ for _ in ()).throw(AssertionError("real sleep")))
+    waits = []
+    feeder = feed.Feeder(runner, plan(tmp_path, ["P1"]), tmp_path, lambda key: [], poll_s=7,
+                         sleep=lambda seconds: (waits.append(seconds), runner.step()))
+    feeder.run()
+    assert waits == [7] and runner.submitted == ["stitch-P1"]
+
+
+def test_feeder_leaves_finished_sets_and_stops_on_the_stop_file(tmp_path):
+    runner = FakeRunner()
     (tmp_path / "P1").mkdir()
     (tmp_path / "P1" / "batch.json").write_text(json.dumps({"status": "stitched"}))
     (tmp_path / "batch.stop").write_text("")
-    feeder = feed.Feeder(runner, plan(tmp_path, ["P1", "P2"]), tmp_path, lambda key: [], poll_s=0)
+    feeder = feed.Feeder(runner, plan(tmp_path, ["P1", "P2"]), tmp_path, lambda key: [], poll_s=0,
+                         sleep=lambda seconds: runner.step())
     feeder.run()
     assert runner.submitted == []
     (tmp_path / "batch.stop").unlink()

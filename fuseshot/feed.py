@@ -47,7 +47,9 @@ def finished(work, job):
 
 
 class Feeder:
-    def __init__(self, runner, plan_file, work, make_args, window=WINDOW, on_done=None, poll_s=POLL_S):
+    def __init__(self, runner, plan_file, work, make_args, window=WINDOW, on_done=None, poll_s=POLL_S,
+                 sleep=time.sleep):
+        self.sleep = sleep  # waits between polls; tests pass their own
         self.runner, self.work, self.make_args = runner, Path(work), make_args
         self.window, self.poll_s = max(1, int(window)), poll_s
         self.on_done = on_done or (lambda: None)
@@ -86,7 +88,7 @@ class Feeder:
     def run(self):
         self.fill()
         while self.active:
-            time.sleep(self.poll_s)
+            self.sleep(self.poll_s)
             self.drop_discarded()
             self.collect()
             self.fill()
