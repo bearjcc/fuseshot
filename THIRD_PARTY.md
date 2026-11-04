@@ -27,6 +27,7 @@ when you install or first use Fuseshot.
 | platformdirs | MIT | everything |
 | psutil | BSD-3-Clause | everything |
 | rawpy | MIT (wheels bundle LibRaw 0.22, LGPL-2.1 or CDDL-1.0) | camera raw files |
+| tomlkit | MIT | the settings page, which keeps the comments in fuseshot.toml |
 | tqdm | MPL-2.0 and MIT | progress bars |
 | watchdog | Apache-2.0 | `fuseshot watch` |
 | torch (extra `fill`) | BSD-3-Clause | `fuseshot fill` |

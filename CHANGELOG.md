@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- A setup page the first time the review page opens with nothing set up, and
+  Settings in the sidebar after that: Immich address and key (with a connection
+  test), photo folders (with a folder browser), the output folder, and which
+  kinds of results to make, each with whether its tools are installed. Then a
+  button to start the first scan. `[outputs]` in `fuseshot.toml` turns kinds off.
+
 ## 0.1.0
 
 First public release.

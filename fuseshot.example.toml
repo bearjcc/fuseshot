@@ -16,6 +16,16 @@ type = "immich"
 # path = '~/Pictures/Camera'
 # recursive = true
 
+# What to make. Everything is on unless turned off here (the settings page
+# in the review page writes this too).
+# [outputs]
+# panoramas = true
+# splats = true
+# loops = true
+# groups = true
+# wigglegrams = true
+# composites = true
+
 # Upload approved results from Immich sets back to Immich as new photos.
 # Off unless set; the key then needs asset.upload too (and album.read,
 # album.create and albumAsset.create for the album). Originals are never changed.

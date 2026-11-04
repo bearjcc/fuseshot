@@ -2,6 +2,7 @@
 // Decisions are kept by the server in work/reviews.json; nothing here needs a build step.
 import { ICONS } from "./icons.js";
 import { FOUND, byPromise, foundBadge, foundMosaic, foundStage, foundWhat, listen, scrubFound } from "./found.js";
+import { openSettings } from "./settings.js";
 
 const $ = id => document.getElementById(id);
 const DECISION_LABEL = { kept: "Kept", discarded: "Discarded", editing: "Being edited" };
@@ -1140,12 +1141,17 @@ function openFromUrl(view) {
 
 async function load() {
   fillIcons();
+  if (location.pathname === `${BASE}/settings`) return settingsPage(false);
   const view = readUrl();
   wire();
   try {
     const r = await fetch(`${BASE}/api/items`);
     if (!r.ok) throw new Error(await r.text());
     const data = await r.json();
+    if (data.setup) {
+      history.replaceState({}, "", `${BASE}/settings`);
+      return settingsPage(true);
+    }
     state.items = data.items;
     state.types = data.types;
     state.models = data.models;
@@ -1163,6 +1169,14 @@ async function load() {
   if (!listen(BASE, { refresh, apply: merge })) {
     setInterval(() => { if (state.running || state.items.some(i => i.decision === "editing")) refresh(); }, 15000);
   }
+}
+
+function settingsPage(first) {
+  $("settingslink").classList.add("on");
+  document.body.classList.add("on-settings");
+  $("statuslinks").innerHTML = first ? "" : `<a class="side-link" href="${BASE}/">${icon("inbox")}<span>Review</span></a>`;
+  $("menu").onclick = () => document.body.classList.toggle("menu-open");
+  return openSettings({ base: BASE, first, icon, toast });
 }
 
 function timeLeft(seconds) {

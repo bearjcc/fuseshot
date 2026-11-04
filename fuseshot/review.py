@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urlsplit
 
-from . import assets, jobs, log, stitch, tools
+from . import assets, jobs, log, settings_web, stitch, tools
 from .events import Changes
 from .files import read_text, write_atomic
 from .found import Found
@@ -75,7 +75,8 @@ VENDOR_FILES = {
 SPLAT_FILES = {"scene.splat": "application/octet-stream"}
 WEB_DIR = Path(__file__).resolve().parent / "web"
 WEB_FILES = {"review.css": "text/css; charset=utf-8", "review.js": "text/javascript; charset=utf-8",
-             "icons.js": "text/javascript; charset=utf-8", "found.js": "text/javascript; charset=utf-8"}
+             "icons.js": "text/javascript; charset=utf-8", "found.js": "text/javascript; charset=utf-8",
+             "settings.js": "text/javascript; charset=utf-8"}
 KINDS = ("stitch", "group", "action", "splat", "found")
 
 
@@ -746,6 +747,16 @@ class Review:
         self.motion_cache = (None, {})
         self.making = set()
         self.changes = None
+        self.cli_sources = False
+        self.reconfigure = None
+
+    def needs_setup(self):
+        return self.reconfigure is not None and settings_web.needs_setup(self.cli_sources)
+
+    def settings_saved(self):
+        """Point the found sets at the sources just saved."""
+        if self.reconfigure is not None:
+            self.library = self.found.library = self.reconfigure()
 
     def candidates(self):
         """Candidate sets, then the burst-mode runs kept beside them for the action check."""
@@ -1833,7 +1844,7 @@ class Review:
                 found.append(self.splat_item(row, decisions, candidates))
         return {"items": found, "types": {t: MAKES[t] for t in SET_TYPES}, "models": OVERRIDE_MODELS,
                 "projections": list(stitch.PROJECTIONS), "orientations": list(stitch.ORIENTATIONS),
-                "running": self.running()}
+                "running": self.running(), "setup": self.needs_setup()}
 
     def watch_changes(self, every=10.0, gap=3.0):
         """Start pushing changes to the list to open pages (GET /api/events)."""
@@ -2171,6 +2182,27 @@ def make_handler(review, redirect_from=(), token=None):
             hosts = {self.headers.get("Host"), self.headers.get("X-Forwarded-Host")}
             return urlsplit(origin).netloc in hosts
 
+        def may_change_settings(self):
+            """Settings and the folder browser: with a token, whoever has it; without one, only
+            someone on this computer, and not through a proxy that makes everyone look local."""
+            return bool(token) or settings_web.local_request(self.client_address[0], self.headers)
+
+        def settings_post(self, path, body):
+            if not self.may_change_settings():
+                return self.send_json(403, {"error": "settings can be changed only on this computer, or with "
+                                                     "FUSESHOT_REVIEW_TOKEN set"})
+            if path == "/settings":
+                found = settings_web.save(body, review.cli_sources)
+                review.settings_saved()
+                return self.send_json(200, found)
+            if path == "/settings/test":
+                return self.send_json(200, settings_web.test_immich(body))
+            if path == "/settings/browse":
+                return self.send_json(200, settings_web.browse(body))
+            if path == "/settings/scan":
+                return self.send_json(200, settings_web.start_scan(review.running() is not None))
+            return self.send_json(404, {"error": "not found"})
+
         def send(self, code, body, kind="text/html; charset=utf-8"):
             data = body if isinstance(body, bytes) else body.encode("utf-8")
             self.send_response(code)
@@ -2268,8 +2300,13 @@ def make_handler(review, redirect_from=(), token=None):
             try:
                 if path is None:
                     pass
-                elif not parts:
+                elif not parts or parts == ["settings"]:
                     return self.send(200, review.app_page())
+                elif parts == ["api", "settings"]:
+                    found = settings_web.state(review.cli_sources)
+                    return self.send_json(200, {**found, "can_change": self.may_change_settings()})
+                elif parts == ["api", "settings", "outputs"]:
+                    return self.send_json(200, settings_web.output_status())
                 elif parts == ["tables"]:
                     return self.send(200, review.index_page(query))
                 elif parts == ["api", "items"]:
@@ -2358,6 +2395,8 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send_json(200, review.queue_fill(body))
                 if path == "/group/choose":
                     return self.send_json(200, review.choose_face(body))
+                if path and (path == "/settings" or path.startswith("/settings/")):
+                    return self.settings_post(path, body)
                 self.send_json(404, {"error": "not found"})
             except KeyError:
                 self.send_json(404, {"error": "unknown set"})
@@ -2372,12 +2411,14 @@ def make_handler(review, redirect_from=(), token=None):
 
 def serve(work_dir, host="127.0.0.1", port=8765, candidates_file=None, base_path="", cache_dir=None,
           redirect_from=(), output_dir=None, token=None, open_browser=False, upload_to=None, album=None,
-          library=None):
+          library=None, cli_sources=False, reconfigure=None):
     """Serve the review page. Anyone who can reach it can keep and discard, so on anything but
     this computer it asks for a token, made up here when none is given. With upload_to (an Immich
     client), kept Immich results are uploaded to it. The library (sources.Library) gives the
-    thumbnails of sets found but not stitched yet."""
+    thumbnails of sets found but not stitched yet; reconfigure makes it again after the settings
+    page saves new sources."""
     review = Review(work_dir, candidates_file, base_path, cache_dir, output_dir, library)
+    review.cli_sources, review.reconfigure = cli_sources, reconfigure
     review.migrate()
     review.watch_changes()
     if upload_to is not None:

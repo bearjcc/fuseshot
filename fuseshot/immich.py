@@ -16,9 +16,10 @@ class ImmichError(RuntimeError):
 
 
 class Immich:
-    def __init__(self, base_url, key):
+    def __init__(self, base_url, key, timeout=120):
         self.base_url = base_url.rstrip("/")
         self._key = key
+        self.timeout = timeout
 
     def __repr__(self):
         return f"Immich({self.base_url!r})"
@@ -33,7 +34,7 @@ class Immich:
         for attempt in range(retries):
             request = urllib.request.Request(url, data=data, headers=headers, method=method)
             try:
-                with urllib.request.urlopen(request, timeout=120) as response:
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     return json.loads(response.read())
             except urllib.error.HTTPError as err:
                 detail = err.read()[:300].decode("utf-8", "replace")

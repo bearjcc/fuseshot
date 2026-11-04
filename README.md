@@ -114,6 +114,23 @@ repository.
 `fuseshot.exe`. It opens the review page. Install
 [Hugin](https://hugin.sourceforge.io/download/) for stitching.
 
+## Setting it up
+
+The quickest way is the review page itself: run `fuseshot review --open` and,
+with nothing set up yet, it opens on a setup page. Give it your Immich address
+and API key (with a button to test them) or pick photo folders, and choose what
+to make: panoramas, object scans, action loops, group shots, wigglegrams and
+action composites. Each shows whether the tools it needs are installed, and how
+to add them if not. Then start the first scan from the same page. Later it is
+under Settings in the sidebar.
+
+The API key is saved to `secrets/immich_key` in the home folder, never to
+`fuseshot.toml`, and the page never shows it again. Settings can be changed only
+from the computer Fuseshot runs on, or from anywhere once the page has a token
+(below); behind a reverse proxy every visitor looks local, so set a token there.
+
+The rest of this section does the same from the command line.
+
 ## Use with Immich
 
 1. In Immich, go to Account Settings, API Keys and create a key with only
@@ -223,7 +240,8 @@ other machines:
             reverse_proxy 127.0.0.1:8765
         }
 
-The page only accepts changes sent from itself, never serves files outside its own
+Without a token, the settings page is read-only to anyone who is not on the same
+computer, including anyone coming in through a proxy. The page only accepts changes sent from itself, never serves files outside its own
 folders, and only writes to Fuseshot's home folder.
 
 ## Privacy

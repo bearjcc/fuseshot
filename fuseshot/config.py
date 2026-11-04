@@ -10,7 +10,8 @@ import os
 from pathlib import Path
 
 SETTINGS_NAME = "fuseshot.toml"
-KNOWN_KEYS = ("output", "sources", "upload", "tools", "models", "jobs", "max_megapixels", "crop")
+KNOWN_KEYS = ("output", "sources", "outputs", "upload", "tools", "models", "jobs", "max_megapixels", "crop")
+OUTPUTS = ("panoramas", "splats", "loops", "groups", "wigglegrams", "composites")
 _home = None
 _settings = None
 
@@ -97,6 +98,21 @@ def settings():
     if _settings is None:
         _settings = load(settings_path())
     return _settings
+
+
+def reload():
+    """Read the settings file again, after the settings page has written it."""
+    global _settings
+    _settings = load(settings_path())
+    return _settings
+
+
+def wants(output):
+    """Whether a kind of result is to be made. All are, unless [outputs] in the settings
+    file turns one off (panoramas = false)."""
+    if output not in OUTPUTS:
+        raise KeyError(output)
+    return section("outputs").get(output, True) is not False
 
 
 def section(name):

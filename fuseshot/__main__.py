@@ -338,7 +338,8 @@ def cmd_review(args):
         upload_to, album = immich.client(), upload.settings()["album"]
     serve(args.work, args.host, args.port, candidates_file=args.candidates, base_path=args.base_path,
           cache_dir=args.cache, redirect_from=args.redirect_from, output_dir=output, token=args.token,
-          open_browser=args.open, upload_to=upload_to, album=album, library=sources.Library(found, args.db))
+          open_browser=args.open, upload_to=upload_to, album=album, library=sources.Library(found, args.db),
+          cli_sources=bool(getattr(args, "sources", None)), reconfigure=lambda: sources.library(args))
 
 
 def cmd_watch(args):
@@ -439,6 +440,12 @@ def cmd_run(args):
     for source in found:
         LOG.info(f"Source: {source.label() if source.kind == 'folder' else 'Immich at ' + source.url}")
     LOG.info(f"Kept folder results go to: {output}")
+    off = [name for name in config.OUTPUTS if not config.wants(name)]
+    if off:
+        LOG.info(f"Turned off under [outputs] in the settings: {', '.join(off)}")
+    args.no_stitch = args.no_stitch or not config.wants("panoramas")
+    args.no_loops = args.no_loops or not config.wants("loops")
+    args.no_groups = args.no_groups or not config.wants("groups")
     if not args.no_stitch:
         hugin = tools.find("hugin")
         if hugin is None and not args.dry_run:
