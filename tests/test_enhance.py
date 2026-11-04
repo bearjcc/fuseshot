@@ -162,8 +162,53 @@ def test_screenshots_and_drawings_are_left_out(tmp_path):
          "long_side": 400, "camera": False}
     rows = [{"v": enhance.VERSION, "id": name, "file_name": name, "gain": 0, "chain": [], "reasons": [],
              "measures": {**m, "camera": camera}} for name, camera in
-            (("Screenshot.png", False), ("scan.jpg", False), ("phone.png", True))]
+            (("Screenshot.png", False), ("scan.jpg", False), ("phone.png", True), ("phone.jpg", True))]
     scores = tmp_path / "scores.jsonl"
     scores.write_text("".join(json.dumps(r) + "\n" for r in rows))
     found = enhance.rank(scores, tmp_path / "c.json", colourise=False)
-    assert sorted(r["id"] for r in found["candidates"]) == ["phone.png", "scan.jpg"]
+    assert sorted(r["id"] for r in found["candidates"]) == ["phone.jpg", "scan.jpg"]
+
+
+def text_page(lines=18):
+    page = np.full((900, 1200, 3), 245, np.uint8)
+    for i in range(lines):
+        cv2.putText(page, f"It was an insurance scam, line {i}", (30, 45 + i * 46), cv2.FONT_HERSHEY_SIMPLEX,
+                    1, (15, 15, 15), 2)
+    return page
+
+
+def score_table():
+    table = np.full((1200, 800, 3), 255, np.uint8)
+    for i in range(30):
+        cv2.line(table, (0, i * 40), (800, i * 40), (0, 0, 0), 1)
+        cv2.putText(table, f"P{i}  Player {i}   {i * 3}", (10, i * 40 + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 1)
+    return table
+
+
+def measured(img, camera):
+    m = enhance.measure(img, size=img.shape[1::-1])
+    return {**m, "camera": camera}
+
+
+def test_text_tables_and_memes_are_graphics_and_photos_are_not():
+    meme = photo().copy()
+    meme[-260:] = 255
+    for i in range(4):
+        cv2.putText(meme, f"when the caption {i}", (20, meme.shape[0] - 220 + i * 55), cv2.FONT_HERSHEY_SIMPLEX,
+                    1.2, (0, 0, 0), 3)
+    for img in (text_page(), score_table(), meme):
+        assert enhance.graphic("x.jpg", True, measured(img, True))
+    grey_print = cv2.GaussianBlur(text_page(), (0, 0), 0.6)
+    grey_print = np.clip(grey_print.astype(np.int16) - 60 + np.random.default_rng(1).normal(0, 4, grey_print.shape),
+                         0, 255).astype(np.uint8)
+    assert enhance.graphic("x.jpg", False, measured(grey_print, False))
+    noisy = np.clip(photo().astype(np.int16) + np.random.default_rng(2).normal(0, 6, photo().shape), 0, 255)
+    assert not enhance.graphic("x.jpg", False, measured(noisy.astype(np.uint8), False))
+
+
+def test_a_soft_text_image_is_not_suggested_for_dust_removal(tmp_path):
+    soft = cv2.GaussianBlur(text_page(), (0, 0), 1.0)
+    row = {"v": enhance.VERSION, "id": "t", "file_name": "t.jpg", "gain": 0, "chain": [], "reasons": [],
+           "measures": {**measured(soft, False), "specks": 0.02, "long_side": 500}}
+    enhance.rescore(row)
+    assert row["gain"] == 0 and row["chain"] == []

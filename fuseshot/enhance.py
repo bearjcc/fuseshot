@@ -22,7 +22,7 @@ import cv2
 import numpy as np
 
 LOG = logging.getLogger("fuseshot")
-VERSION = 3
+VERSION = 4
 SIDE = 1024
 THUMB_SIDE = 320
 MIN_GAIN = 50
@@ -40,6 +40,16 @@ SPECKS = 0.003
 # How much of the original is read to look for blocking in a low-quality JPEG.
 ORIGINAL_BYTES = 6 << 20
 GRAPHIC_TYPES = (".png", ".gif", ".webp")
+# A tile this even (grey levels, standard deviation) is flat colour.
+FLAT_STD = 1.5
+# Sobel magnitude of a crisp, high-contrast edge such as the side of a letter.
+CRISP_EDGE = 200
+# A picture is a graphic (text, a meme, a table) when at least this share of it is crisp
+# edges and GRAPHIC_FLAT of it is flat colour, or when it has no camera details and is black
+# and white with MONO_CRISP of crisp edges (printed text on a grey page has no flat tiles).
+GRAPHIC_CRISP = 0.03
+GRAPHIC_FLAT = 0.25
+MONO_CRISP = 0.02
 STEPS = {
     "scratches": ("lama", "Paint out dust and scratches"),
     "jpeg": ("fbcnn", "Remove JPEG blocking"),
@@ -132,6 +142,19 @@ def original_blockiness(data):
     return blockiness(grey[top:top + 1024, left:left + 1024])
 
 
+def flat_and_crisp(grey):
+    """Share of 8x8 tiles that are one flat colour, and share of pixels on a crisp,
+    high-contrast edge. Text, tables, memes and drawings are high on both; photos are not,
+    since even a plain sky or a dark corner carries grain and soft gradients."""
+    h, w = (d // 8 * 8 for d in grey.shape)
+    if h < 16 or w < 16:
+        return 0.0, 0.0
+    tiles = grey[:h, :w].astype(np.float32).reshape(h // 8, 8, w // 8, 8)
+    flat = float((tiles.std(axis=(1, 3)) < FLAT_STD).mean())
+    mag = cv2.magnitude(cv2.Sobel(grey, cv2.CV_32F, 1, 0), cv2.Sobel(grey, cv2.CV_32F, 0, 1))
+    return flat, float((mag > CRISP_EDGE).mean())
+
+
 def colour_look(img):
     """('mono' | 'sepia' | None, mean chroma) from an 8-bit BGR image."""
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32) - [0, 128, 128]
@@ -182,6 +205,7 @@ def measure(img, head=None, size=None, original=None):
         "look": look,
         "chroma": round(chroma, 1),
         "specks": round(specks(grey), 5),
+        **dict(zip(("flat", "crisp"), (round(v, 4) for v in flat_and_crisp(grey)))),
         "long_side": max(size) if size and all(size) else None,
     }
 
@@ -312,17 +336,25 @@ def colourise_on():
     return config.wants("colourise")
 
 
-def graphic(file_name, camera):
-    """A lossless or animated file with no camera details: a screenshot, meme or drawing more
-    often than a photo, and not something restoration would help."""
-    return not camera and str(file_name).lower().endswith(GRAPHIC_TYPES)
+def graphic(file_name, camera, m=None):
+    """A screenshot, meme, table or drawing rather than a photo, which restoration would not
+    help: a lossless or animated file (cameras save JPEG or raw, and screenshots can carry
+    the phone's make and model), a picture that is mostly flat colour with crisp edges, or a
+    black-and-white picture with no camera details and the crisp edges of printed text."""
+    m = m or {}
+    crisp = m.get("crisp", 0)
+    if str(file_name).lower().endswith(GRAPHIC_TYPES):
+        return True
+    if not camera and m.get("look") == "mono" and crisp >= MONO_CRISP:
+        return True
+    return crisp >= GRAPHIC_CRISP and m.get("flat", 0) >= GRAPHIC_FLAT
 
 
 def rescore(row, colourise=False):
     m = row.get("measures")
     if m:
         row["gain"], row["chain"], row["reasons"] = score(m, m.get("camera", True), colourise)
-        if graphic(row.get("file_name", ""), m.get("camera", True)):
+        if graphic(row.get("file_name", ""), m.get("camera", True), m):
             row["gain"], row["chain"], row["reasons"] = 0.0, [], []
 
 

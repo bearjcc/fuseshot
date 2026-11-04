@@ -536,8 +536,15 @@ Each photo gets a few cheap CPU checks. A problem counts only when a fix would s
 
 Each problem has a severity from 0 to 1 and a weight for how much its fix shows. Only
 the three biggest count, and only those worth at least 10 points; the expected gain is
-`100 × (1 − Π(1 − weight × severity))` over them. Photos under 50 are taken as fine, and so are PNG, GIF and WebP files with no camera
-details, which are mostly screenshots, memes and drawings.
+`100 × (1 − Π(1 − weight × severity))` over them. Photos under 50 are taken as fine.
+
+Graphics are left out too, since restoration does not help them: PNG, GIF and WebP files
+(cameras save JPEG or raw), and pictures that look like text, memes, tables or drawings.
+For those the preview is cut into 8×8 tiles, and a picture counts as a graphic when at
+least 25% of the tiles are one flat colour (standard deviation under 1.5 grey levels) and
+at least 3% of its pixels sit on a crisp edge (Sobel magnitude over 200), or, with no camera
+details, when it is black and white with crisp edges on at least 2% (printed text on a
+grey page).
 Scores and measurements are appended to `work/enhance/scores.jsonl` one photo at a time, so
 a scan can be stopped (`work/batch.stop`) and run again, and it skips photos already
 scored. The ranking is worked out again from the measurements each time, so turning

@@ -7,6 +7,7 @@
   of steps and the reasons, listed read-only on the review page. Off by default.
   Blocking is measured on the original, size counts only under 1000 px, and
   black-and-white photos count only with the optional `colourise` output.
+  Screenshots, memes, tables and other text images are left out.
 - A setup page the first time the review page opens with nothing set up, and
   Settings in the sidebar after that: Immich address and key (with a connection
   test), photo folders (with a folder browser), the output folder, and which
