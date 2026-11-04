@@ -37,8 +37,8 @@ def test_each_problem_suggests_its_step():
     cases = {
         "nafnet": enhance.measure(blurry, None, (4000, 3000)),
         "scunet": enhance.measure(noisy, None, (4000, 3000)),
-        "fbcnn": enhance.measure(img, jpeg_bytes(img, 30), (4000, 3000)),
-        "realesrgan": enhance.measure(img, None, (800, 600)),
+        "fbcnn": enhance.measure(blurry, jpeg_bytes(blurry, 8), (4000, 3000), jpeg_bytes(blurry, 8)),
+        "realesrgan": enhance.measure(img, None, (320, 240)),
     }
     for step, m in cases.items():
         gain, chain, reasons = enhance.score(m)
@@ -60,8 +60,9 @@ def test_a_faded_scan_with_dust_gets_restoration_steps():
     m = enhance.measure(old_scan(), None, (1600, 1200))
     assert m["look"] == "sepia"
     gain, chain, reasons = enhance.score(m, camera=False)
-    assert chain[0] == "lama" and "ddcolor" in chain and chain[-1] == "realesrgan"
-    assert any("scan" in r for r in reasons)
+    assert chain == ["lama"] and "ddcolor" not in chain
+    gain, chain, reasons = enhance.score(m, camera=False, colourise=True)
+    assert chain == ["lama", "ddcolor"] and any("scan" in r for r in reasons)
     mono = enhance.measure(cv2.cvtColor(cv2.cvtColor(photo(), cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR))
     assert mono["look"] == "mono"
 
@@ -71,8 +72,8 @@ def test_scan_is_resumable_and_ranks_biggest_gain_first(home, tmp_path):
     folder.mkdir()
     img = cv2.resize(photo(), (2800, 2100))
     Image.fromarray(img[..., ::-1]).save(folder / "fine.jpg", quality=95)
-    Image.fromarray(cv2.resize(img, (640, 480))[..., ::-1]).save(folder / "small_bad.jpg", quality=25)
-    Image.fromarray(cv2.GaussianBlur(img, (0, 0), 3)[..., ::-1]).save(folder / "soft.jpg", quality=90)
+    Image.fromarray(cv2.resize(img, (320, 240))[..., ::-1]).save(folder / "small_bad.jpg", quality=10)
+    Image.fromarray(cv2.GaussianBlur(img, (0, 0), 8)[..., ::-1]).save(folder / "soft.jpg", quality=90)
     db_path = home / "cache" / "assets.sqlite"
     db = cache.connect(db_path)
     sources.FolderSource(folder).sync(db)
@@ -118,3 +119,39 @@ def test_the_review_page_lists_candidates(home):
     assert "61" in page and "JPEG saved at quality 30" in page and "fbcnn &gt; realesrgan" in page
     assert "<b>.jpg" not in page and "turned off" in page
     assert "id=\"enhancelink\"" in r.app_page() and "hidden" in r.app_page().split('id="enhancelink"')[1][:80]
+
+
+def test_blocking_must_show_not_just_a_low_quality_setting():
+    img = photo()
+    flat = cv2.GaussianBlur(img, (0, 0), 6)
+    assert enhance.original_blockiness(jpeg_bytes(img, 95)) < 1.1
+    assert enhance.original_blockiness(jpeg_bytes(flat, 10)) > enhance.BLOCKY
+    busy = enhance.measure(img, jpeg_bytes(img, 60), (4000, 3000), jpeg_bytes(img, 60))
+    assert busy["jpeg_quality"] < 75 and "fbcnn" not in enhance.score(busy)[1]
+
+
+def test_size_counts_only_when_small_and_grows_smoothly():
+    base = enhance.measure(photo(), None, (4000, 3000))
+    gains = [enhance.score({**base, "long_side": side})[0] for side in (2400, 1000, 900, 700, 500, 300)]
+    assert gains[0] == gains[1] == 0
+    assert gains == sorted(gains) and gains[-1] - gains[-2] < 25
+
+
+def test_black_and_white_alone_is_not_a_candidate():
+    clean = cv2.GaussianBlur(photo(), (0, 0), 3)
+    mono = cv2.cvtColor(cv2.cvtColor(clean, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR)
+    m = {**enhance.measure(mono, None, (4000, 3000)), "laplacian": 300}
+    assert enhance.score(m, camera=False) == (0.0, [], [])
+    assert enhance.score(m, camera=False, colourise=True)[1] == ["ddcolor"]
+
+
+def test_chains_stay_short_and_rank_rescores_from_measurements(tmp_path):
+    m = {"laplacian": 5, "edges": 0.1, "noise": 9, "blockiness": 2, "look": "mono", "specks": 0.02,
+         "long_side": 400, "camera": False}
+    gain, chain, _ = enhance.score(m, camera=False, colourise=True)
+    assert len(chain) == enhance.MAX_STEPS and gain <= 100
+    scores = tmp_path / "scores.jsonl"
+    scores.write_text(json.dumps({"v": enhance.VERSION, "id": "a", "gain": 0, "chain": [], "reasons": [],
+                                  "measures": m}) + "\n")
+    found = enhance.rank(scores, tmp_path / "c.json", colourise=False)
+    assert found["candidates"][0]["gain"] > 50 and "ddcolor" not in found["candidates"][0]["chain"]

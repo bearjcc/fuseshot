@@ -22,14 +22,23 @@ import cv2
 import numpy as np
 
 LOG = logging.getLogger("fuseshot")
-VERSION = 2
+VERSION = 3
 SIDE = 1024
 THUMB_SIDE = 320
-MIN_GAIN = 15
+MIN_GAIN = 50
+THUMB_GAIN = 10
+MAX_STEPS = 3
 KEEP = 500
 HEAD_BYTES = 1 << 16
-# Long side, in pixels, below which a photo looks soft on a large screen.
-WANT_LONG_SIDE = 2400
+# Long sides, in pixels: under SMALL_SIDE a photo looks soft on a screen, at TINY_SIDE badly.
+SMALL_SIDE = 1000
+TINY_SIDE = 300
+# Mean jump across 8x8 block edges over the jump inside blocks, above which blocking shows.
+BLOCKY = 1.6
+# Share of the picture in small marks above which dust and scratches show.
+SPECKS = 0.003
+# How much of the original is read to look for blocking in a low-quality JPEG.
+ORIGINAL_BYTES = 6 << 20
 STEPS = {
     "scratches": ("lama", "Paint out dust and scratches"),
     "jpeg": ("fbcnn", "Remove JPEG blocking"),
@@ -38,7 +47,7 @@ STEPS = {
     "faded": ("ddcolor", "Colourise or restore colour (optional)"),
     "small": ("realesrgan", "Upscale"),
 }
-WEIGHTS = {"scratches": 0.6, "jpeg": 0.8, "noise": 0.7, "blur": 0.6, "faded": 0.4, "small": 0.7}
+WEIGHTS = {"scratches": 0.6, "jpeg": 0.7, "noise": 0.6, "blur": 0.6, "faded": 0.5, "small": 0.6}
 NOISE_KERNEL = np.array([[1, -2, 1], [-2, 4, -2], [1, -2, 1]], np.float32)
 STANDARD_LUMA = np.array([
     16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55,
@@ -96,6 +105,32 @@ def jpeg_quality(head):
     return int(round(min(100, max(1, quality))))
 
 
+def blockiness(grey):
+    """Mean jump across 8x8 block edges over the mean jump between other neighbours, on a
+    grey image at its original size (1.0 when there is no blocking)."""
+    g = grey.astype(np.float32)
+    h, w = g.shape
+    if h < 32 or w < 32:
+        return None
+    dx = np.abs(np.diff(g, axis=1))
+    dy = np.abs(np.diff(g, axis=0))
+    edge_x = (np.arange(w - 1) % 8) == 7
+    edge_y = (np.arange(h - 1) % 8) == 7
+    inside = dx[:, ~edge_x].mean() + dy[~edge_y].mean()
+    across = dx[:, edge_x].mean() + dy[edge_y].mean()
+    return float(across / inside) if inside > 0.5 else None
+
+
+def original_blockiness(data):
+    """Blockiness of an original JPEG (its middle, at most 1024 px square), or None."""
+    grey = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE) if data else None
+    if grey is None:
+        return None
+    h, w = grey.shape
+    top, left = max(0, h // 2 - 512) // 8 * 8, max(0, w // 2 - 512) // 8 * 8
+    return blockiness(grey[top:top + 1024, left:left + 1024])
+
+
 def colour_look(img):
     """('mono' | 'sepia' | None, mean chroma) from an 8-bit BGR image."""
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB).astype(np.float32) - [0, 128, 128]
@@ -130,7 +165,7 @@ def original_noise(img, size=None):
     return noise_sigma(cv2.cvtColor(preview, cv2.COLOR_BGR2GRAY)) * min(4.0, max(1.0, factor))
 
 
-def measure(img, head=None, size=None):
+def measure(img, head=None, size=None, original=None):
     """The measurements for one photo: img is its preview (BGR), head the first bytes of the
     original (for the JPEG tables) and size its (width, height)."""
     small = shrink(img)
@@ -142,6 +177,7 @@ def measure(img, head=None, size=None):
         "edges": round(edges, 4),
         "noise": round(original_noise(img, size), 2),
         "jpeg_quality": jpeg_quality(head) if head else None,
+        "blockiness": None if original is None else round(original_blockiness(original) or 0, 3) or None,
         "look": look,
         "chroma": round(chroma, 1),
         "specks": round(specks(grey), 5),
@@ -149,37 +185,41 @@ def measure(img, head=None, size=None):
     }
 
 
-def problems(m, camera=True):
-    """{problem: (severity 0-1, reason)} for a set of measurements."""
+def problems(m, camera=True, colourise=False):
+    """{problem: (severity 0-1, reason)} for a set of measurements. Only problems that a
+    visible fix exists for count; a black-and-white look counts only when colourise is on."""
     found = {}
-    q = m.get("jpeg_quality")
-    if q is not None and q < 75:
-        found["jpeg"] = (clip01((75 - q) / 45), f"JPEG saved at quality {q}")
-    if m["noise"] > 1.5:
-        found["noise"] = (clip01((m["noise"] - 1.5) / 3), f"noise around {m['noise']:.1f} levels")
-    if m["laplacian"] < 120 and m["edges"] > 0.01:
-        found["blur"] = (clip01((120 - m["laplacian"]) / 110), f"soft detail (sharpness {m['laplacian']:.0f})")
+    block = m.get("blockiness")
+    if block is not None and block > BLOCKY:
+        found["jpeg"] = (clip01((block - BLOCKY) / 0.8), f"visible JPEG blocking ({block:.2f}x at block edges)")
+    if m["noise"] > 2:
+        found["noise"] = (clip01((m["noise"] - 2) / 4), f"noise around {m['noise']:.1f} levels")
+    if m["laplacian"] < 60 and m["edges"] > 0.01:
+        found["blur"] = (clip01((60 - m["laplacian"]) / 50), f"soft detail (sharpness {m['laplacian']:.0f})")
     long_side = m.get("long_side")
-    if long_side and long_side < WANT_LONG_SIDE:
-        found["small"] = (clip01((WANT_LONG_SIDE - long_side) / 1800), f"only {long_side} px on the long side")
-    scan = m["look"] is not None and not camera
-    if m["look"] is not None:
+    if long_side and long_side < SMALL_SIDE:
+        found["small"] = (clip01((SMALL_SIDE - long_side) / (SMALL_SIDE - TINY_SIDE)), f"only {long_side} px on the long side")
+    old = m["look"] is not None
+    if old and m["specks"] > SPECKS:
+        found["scratches"] = (clip01((m["specks"] - SPECKS) / 0.01),
+                              f"dust or scratch marks ({m['specks'] * 100:.2f}% of the picture)")
+    if colourise and old and not camera:
         what = "black and white" if m["look"] == "mono" else "faded sepia"
-        found["faded"] = (0.8 if scan else 0.3, f"{what}{', no camera details (a scan?)' if scan else ''}")
-    if m["specks"] > 0.0004 and (scan or m["look"] is not None):
-        found["scratches"] = (clip01(m["specks"] / 0.004), f"dust or scratch marks ({m['specks'] * 100:.2f}% of the picture)")
+        found["faded"] = (0.6, f"{what}, no camera details (a scan?)")
     return found
 
 
-def score(m, camera=True):
-    """(expected gain 0-100, chain of steps, reasons)."""
-    found = problems(m, camera)
+def score(m, camera=True, colourise=False):
+    """(expected visible gain 0-100, chain of steps, reasons). Only the MAX_STEPS biggest
+    problems count, so a chain stays short and a pile of small doubts adds up to little."""
+    found = problems(m, camera, colourise)
+    top = sorted(found, key=lambda name: -WEIGHTS[name] * found[name][0])[:MAX_STEPS]
+    top = [name for name in top if WEIGHTS[name] * found[name][0] >= 0.1]
     keep = 1.0
-    for name, (sev, _) in found.items():
-        keep *= 1 - WEIGHTS[name] * sev
-    chain = [STEPS[name][0] for name in STEPS if name in found]
-    reasons = [found[name][1] for name in STEPS if name in found]
-    return round((1 - keep) * 100, 1), chain, reasons
+    for name in top:
+        keep *= 1 - WEIGHTS[name] * found[name][0]
+    order = [name for name in STEPS if name in top]
+    return round((1 - keep) * 100, 1), [STEPS[n][0] for n in order], [found[n][1] for n in order]
 
 
 def recent_photos(db_path, limit=None):
@@ -223,8 +263,15 @@ def score_one(library, photo):
     if "jpeg" in photo["mime"] or photo["file_name"].lower().endswith((".jpg", ".jpeg")):
         head = library.original_head(photo["id"], HEAD_BYTES)
         head = head[1] if isinstance(head, tuple) else head
-    m = measure(img, head, photo["size"])
-    gain, chain, reasons = score(m, photo["camera"])
+    original = None
+    q = jpeg_quality(head) if head else None
+    if q is not None and q < 85:
+        # Only a low-quality JPEG is read whole, to see whether its blocks really show.
+        original = library.original_head(photo["id"], ORIGINAL_BYTES)
+        original = original[1] if isinstance(original, tuple) else original
+    m = measure(img, head, photo["size"], original)
+    m["camera"] = photo["camera"]
+    gain, chain, reasons = score(m, photo["camera"], colourise_on())
     return img, {"v": VERSION, "id": photo["id"], "file_name": photo["file_name"], "taken": photo["taken"],
                  "gain": gain, "chain": chain, "reasons": reasons, "measures": m}
 
@@ -249,13 +296,25 @@ def scan(db_path, library, out_dir, limit=None, stop_file=None):
                 failed += 1
                 LOG.warning(f"  {photo['id']}: {err}")
                 continue
-            if row["gain"] >= MIN_GAIN:
+            if row["gain"] >= THUMB_GAIN:
                 write_thumb(img, thumb_path(out_dir, photo["id"]))
             f.write(json.dumps(row) + "\n")
             if n % 100 == 0:
                 f.flush()
                 LOG.info(f"  {n}/{len(todo)} scored, {(time.time() - started) / n:.2f} s each")
     return rank(scores_file, out_dir / "candidates.json")
+
+
+def colourise_on():
+    from . import config
+
+    return config.wants("colourise")
+
+
+def rescore(row, colourise=False):
+    m = row.get("measures")
+    if m:
+        row["gain"], row["chain"], row["reasons"] = score(m, m.get("camera", True), colourise)
 
 
 def write_thumb(img, path):
@@ -265,8 +324,10 @@ def write_thumb(img, path):
     os.replace(tmp, path)
 
 
-def rank(scores_file, candidates_file, keep=KEEP, min_gain=MIN_GAIN):
-    """Read the scores a line at a time, keep the best few, and write them biggest gain first."""
+def rank(scores_file, candidates_file, keep=KEEP, min_gain=MIN_GAIN, colourise=None):
+    """Read the scores a line at a time, score them again from their measurements (so a
+    change of settings needs no new scan), keep the best few and write them biggest gain first."""
+    colourise = colourise_on() if colourise is None else colourise
     best, total, fine = [], 0, 0
     if scores_file.exists():
         with scores_file.open(encoding="utf-8") as f:
@@ -278,6 +339,7 @@ def rank(scores_file, candidates_file, keep=KEEP, min_gain=MIN_GAIN):
                 if row.get("v") != VERSION:
                     continue
                 total += 1
+                rescore(row, colourise)
                 if row["gain"] < min_gain:
                     fine += 1
                     continue
