@@ -11,7 +11,9 @@ from pathlib import Path
 
 SETTINGS_NAME = "fuseshot.toml"
 KNOWN_KEYS = ("output", "sources", "outputs", "upload", "tools", "models", "jobs", "max_megapixels", "crop")
-OUTPUTS = ("panoramas", "splats", "loops", "groups", "wigglegrams", "composites")
+OUTPUTS = ("panoramas", "splats", "loops", "groups", "wigglegrams", "composites", "enhance")
+# Results that are only made once turned on.
+OFF_BY_DEFAULT = ("enhance",)
 _home = None
 _settings = None
 
@@ -109,10 +111,11 @@ def reload():
 
 def wants(output):
     """Whether a kind of result is to be made. All are, unless [outputs] in the settings
-    file turns one off (panoramas = false)."""
+    file turns one off (panoramas = false); those in OFF_BY_DEFAULT need turning on."""
     if output not in OUTPUTS:
         raise KeyError(output)
-    return section("outputs").get(output, True) is not False
+    value = section("outputs").get(output)
+    return value is True if output in OFF_BY_DEFAULT else value is not False
 
 
 def section(name):

@@ -269,6 +269,15 @@ def peak_mb():
         return "?"
 
 
+def cmd_enhance_scan(args):
+    from . import enhance
+
+    found = enhance.scan(args.db, sources.library(args), args.work / "enhance", limit=args.limit,
+                         stop_file=args.work / "batch.stop")
+    for row in found["candidates"][:10]:
+        LOG.info(f"  {row['gain']:5.1f}  {row['id']}  {', '.join(row['reasons'])}")
+
+
 def cmd_group(args):
     from . import group
     from .action import load_sets
@@ -778,6 +787,11 @@ def main(argv=None):
     p.add_argument("--cache", type=Path)
     p.add_argument("--work", type=Path)
     p.set_defaults(func=cmd_action)
+
+    p = sub.add_parser("enhance-scan", help="rank photos that restoration could help (read-only; nothing is changed)")
+    p.add_argument("--limit", type=int, help="only the newest this many photos (default: all)")
+    p.add_argument("--work", type=Path)
+    p.set_defaults(func=cmd_enhance_scan)
 
     p = sub.add_parser("group", help="find group photo sets and merge the best face of each person")
     p.add_argument("sets", nargs="*", help="set ids to merge (or re-merge after picking faces by hand)")

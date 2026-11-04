@@ -28,6 +28,7 @@ OUTPUTS = {
     "groups": {"label": "Best-face group shots", "module": ("group", "mediapipe")},
     "wigglegrams": {"label": "Wigglegrams from stereo photos", "ffmpeg": True},
     "composites": {"label": "Action composites"},
+    "enhance": {"label": "Enhance candidates (photos restoration could help)"},
 }
 
 
