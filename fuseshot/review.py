@@ -824,7 +824,7 @@ class Review:
         return self.groups_cache[1]
 
     def detected_type(self, set_id, candidate, actions):
-        if set_id.startswith("motion-"):
+        if set_id.startswith(("motion-", "wiggle-")):
             return "action"
         if self.groups().get(set_id.split("-")[0], {}).get("group"):
             return "group"
@@ -866,6 +866,16 @@ class Review:
             data = json.loads(self.motion_file.read_text(encoding="utf-8")).get("clips", {})
             self.motion_cache = (stamp, {k: v for k, v in data.items() if v.get("action") and SET_ID.match(k)})
         return self.motion_cache[1]
+
+    def loop_candidate(self, key, info=None, candidates=None):
+        """The set a loop was made from: a found set, a still with a clip, or the photo a
+        wigglegram keeps in its action.json."""
+        found = (candidates or {}).get(key.split("-")[0]) or self.motion_candidate(key)
+        if found:
+            return found
+        if info is None:
+            info = self.read_json(self.loops_dir / key / "action.json")
+        return info.get("candidate") or {}
 
     def motion_info(self, key):
         info = self.motion_clips().get(key)
@@ -1278,7 +1288,7 @@ class Review:
         rows = []
         for key in keys:
             info = json.loads((self.loops_dir / key / "action.json").read_text(encoding="utf-8"))
-            c = candidates.get(key.split("-")[0]) or self.motion_candidate(key)
+            c = self.loop_candidate(key, info, candidates)
             href = f"{self.base}/action/{key}"
             image = (f"<a href='{href}'><img class='thumb' loading='lazy' alt='' "
                      f"src='{self.base}/loop/{key}/poster.jpg?size=thumb'></a>")
@@ -1300,8 +1310,7 @@ class Review:
         loop_dir = self.loop_dir(key)
         info = json.loads((loop_dir / "action.json").read_text(encoding="utf-8"))
         actions = self.actions()
-        c = next((x for x in self.candidates() if x["set_id"] == key.split("-")[0]), None) \
-            or self.motion_candidate(key)
+        c = self.loop_candidate(key, info, {x["set_id"]: x for x in self.candidates()})
         check = actions.get(key, {})
         last = self.last_decision(self.decisions(), key, "action").get("decision")
         taken = (c.get("start_local") or "")[:16].replace("T", " ")
@@ -1774,12 +1783,12 @@ class Review:
     def loop_item(self, key, decisions, candidates, actions):
         loop_dir = self.loops_dir / key
         info = self.read_json(loop_dir / "action.json")
-        c = candidates.get(key.split("-")[0]) or self.motion_candidate(key)
+        c = self.loop_candidate(key, info, candidates)
         poster = loop_dir / "poster.jpg"
         size = self.image_size(poster) or [3, 2]
         animation = loop_dir / "animation.webp"
         version = int(animation.stat().st_mtime) if animation.exists() else 0
-        flags = [["only a few frames", 1]] if (info.get("frames") or 0) < 6 else []
+        flags = [["only a few frames", 1]] if (info.get("frames") or 0) < 6 and info.get("style") != "wiggle" else []
         return {
             "key": f"action:{key}", "kind": "action", "id": key, "href": f"{self.base}/action/{key}",
             "thumb": f"{self.base}/loop/{key}/poster.jpg?size=thumb&v={version}",
@@ -1787,8 +1796,10 @@ class Review:
             "full": f"{self.base}/loop/{key}/animation.webp?v={version}" if version else None,
             "w": size[0], "h": size[1], "type": "action", "frames": info.get("frames"),
             "taken": c.get("start_local"), "camera": c.get("camera"), "place": c.get("places"),
-            "link": c.get("best_link") or c.get("first_link"), **library_fields(c), "reason": actions.get(key, {}).get("reason") or c.get("reason"),
-            "name": c.get("name"), "flags": [f[0] for f in flags], "score": sum(f[1] for f in flags),
+            "link": c.get("best_link") or c.get("first_link"), **library_fields(c),
+            "reason": actions.get(key, {}).get("reason") or c.get("reason") or info.get("reason"),
+            "name": c.get("name"), "style": info.get("style") or "loop",
+            "flags": [f[0] for f in flags], "score": sum(f[1] for f in flags),
             **self.decision_fields(decisions, key, "action"),
         }
 

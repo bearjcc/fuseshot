@@ -426,6 +426,21 @@ itself, cut out of the JPEG or copied from the MOV without encoding it again;
 keeping it makes the loop files above from about 12 frames a second of the clip
 (at most 36 frames), registered and cropped the same way.
 
+### Wigglegrams
+
+    fuseshot action --wiggle           # make one for each stereo photo
+
+Stereo photos are MPO files (two JPEGs in one, as Fujifilm W3 and Nintendo 3DS
+write them) and side-by-side JPEGs from an XREAL Beam Pro (`SV_` names or XREAL
+as the make, 8:3 or 32:9). The two views are lined up on the subject: a face if
+OpenCV finds one, else the most salient spot (spectral residual saliency), else
+the middle. ORB matches between the views give the vertical offset from all of
+them and the sideways one from those near the subject, so the subject stays still
+and the rest rocks around it. The two frames are cropped to what both views show
+and written like a loop (`work/actions/wiggle-<asset>/`, 140 ms a frame). `run`
+makes them when wigglegrams are on in `[outputs]`; a photo that already has one,
+or that failed (`failed.json`), is skipped.
+
 ## Gaussian splats
 
     fuseshot splat --plan              # rank the sets, write work/splat_plan.json

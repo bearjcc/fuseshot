@@ -91,7 +91,8 @@ def export(review, output, keys=None, log=LOG.info, dry_run=False, libraries=("f
             log(f"{item['key']}: kept, but its result file is missing")
             continue
         day = (item.get("taken") or "")[:10]
-        dest = output / f"{day} {item['id']} {KIND_WORDS[item['kind']]}{source.suffix}".strip()
+        word = "wigglegram" if item.get("style") == "wiggle" else KIND_WORDS[item["kind"]]
+        dest = output / f"{day} {item['id']} {word}{source.suffix}".strip()
         if dry_run:
             written.append(dest)
             log(f"{item['key']}: would copy to {dest}")

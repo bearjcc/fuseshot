@@ -7,6 +7,8 @@
   test), photo folders (with a folder browser), the output folder, and which
   kinds of results to make, each with whether its tools are installed. Then a
   button to start the first scan. `[outputs]` in `fuseshot.toml` turns kinds off.
+- Wigglegrams of stereo photos (MPO files and side-by-side JPEGs from an XREAL
+  Beam Pro), lined up on the subject and reviewed like loops.
 
 ## 0.1.0
 

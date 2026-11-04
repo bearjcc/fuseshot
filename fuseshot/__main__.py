@@ -250,6 +250,11 @@ def cmd_action(args):
 
         motion.scan(args.db, sources.library(args), args.cache, args.actions.with_name("motion.json"))
         return
+    if args.wiggle:
+        from . import stereo
+
+        stereo.build(args.db, sources.library(args), args.cache / "stereo", args.work / "actions")
+        return
     action.build(sources.library(args), args.actions, args.cache, args.work, args.candidates,
                  keys=args.sets, chunk=args.chunk, chunk_size=args.chunk_size,
                  stop_file=args.work / "batch.stop")
@@ -488,6 +493,8 @@ def cmd_run(args):
         step("action", "--scan")
         step("action")
         step("action", "--motion")
+    if config.wants("wigglegrams"):
+        step("action", "--wiggle")
     if not args.no_groups:
         if args.dry_run or importlib.util.find_spec("mediapipe"):
             step("group", "--scan")
@@ -760,6 +767,8 @@ def main(argv=None):
     p.add_argument("--scan", action="store_true", help="classify every candidate set and stitch job")
     p.add_argument("--motion", action="store_true",
                    help="check motion photos and Live Photos for a still camera with something moving")
+    p.add_argument("--wiggle", action="store_true",
+                   help="make wigglegrams of stereo photos (side-by-side SV_ photos and MPO files)")
     p.add_argument("--chunk", type=int, help="make loops for one chunk of the action sets (0-based)")
     p.add_argument("--sets", nargs="+", help="make loops for these set ids")
     p.add_argument("--chunk-size", type=int, default=20)

@@ -71,11 +71,13 @@ const state = {
 
 // filtering and the grid
 
+const oneName = item => item.style === "wiggle" ? "Wigglegram" : KIND[item.kind].one;
+
 function matches(item) {
   if (state.kind !== "all" && item.kind !== state.kind) return false;
   if (state.status === "todo" ? item.decision : state.status !== "all" && item.decision !== state.status) return false;
   if (!state.q) return true;
-  const hay = [item.id, item.name, item.camera, item.place, item.type, item.model, KIND[item.kind].one, ...(item.flags || [])].join(" ").toLowerCase();
+  const hay = [item.id, item.name, item.camera, item.place, item.type, item.model, oneName(item), ...(item.flags || [])].join(" ").toLowerCase();
   return state.q.toLowerCase().split(/\s+/).every(word => hay.includes(word));
 }
 function sections() {
@@ -132,7 +134,8 @@ function tileHtml(item, w, h) {
     : item.edit?.state === "done" ? `<span class="bl edited">${icon("pencil")}New version</span>`
     : item.note ? `<span class="bl edited">${icon("note")}Note</span>`
     : item.kind === "found" ? foundBadge(item, { icon, esc })
-    : item.clip ? `<span class="bl clip">${icon(KIND.action.icon)}<span>${item.making ? "Making the loop" : "Motion photo"}</span></span>` : "";
+    : item.clip ? `<span class="bl clip">${icon(KIND.action.icon)}<span>${item.making ? "Making the loop" : "Motion photo"}</span></span>`
+    : item.style === "wiggle" ? `<span class="bl clip">${icon("glasses")}<span>Wigglegram</span></span>` : "";
   return `<div class="tile${state.selected.has(item.key) ? " selected" : ""}" tabindex="0" data-key="${esc(item.key)}"
     ${w ? `style="width:${w.toFixed(2)}px;height:${h.toFixed(2)}px"` : ""} title="${esc((item.name || item.id) + (flags.length ? " - " + flags.join("; ") : ""))}">
     ${media}<div class="shade"></div>
@@ -373,7 +376,7 @@ const viewer = {
   paint(direction = 0) {
     const item = this.item;
     $("vname").textContent = item.name || item.id;
-    $("vsub").textContent = [`${this.index + 1} of ${this.queue.length}`, KIND[item.kind].one, item.type !== "panorama" && item.kind === "stitch" ? `type: ${item.type}` : item.kind === "found" ? foundWhat(item) : "",
+    $("vsub").textContent = [`${this.index + 1} of ${this.queue.length}`, oneName(item), item.type !== "panorama" && item.kind === "stitch" ? `type: ${item.type}` : item.kind === "found" ? foundWhat(item) : "",
       item.frames ? `${item.frames} frames` : "", when(item.taken), item.camera].filter(Boolean).join(" · ");
     $("vprogress").style.width = `${(100 * (this.index + 1) / this.queue.length).toFixed(1)}%`;
     $("vimmich").hidden = !item.link;

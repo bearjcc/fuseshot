@@ -478,17 +478,25 @@ def loop_from_frames(images, out_dir, delay, extra, log=LOG.info):
     size = (int((right - left) * scale) // 2 * 2, int((bottom - top) * scale) // 2 * 2)
     frames = [cv2.resize(f[top:bottom, left:right], size, interpolation=cv2.INTER_AREA)
               for f in frames]
-    poster = cv2.imencode(".jpg", frames[len(frames) // 2], [cv2.IMWRITE_JPEG_QUALITY, 88])[1]
-    write_atomic(out_dir / "poster.jpg", poster.tobytes())
+    return write_loop(frames, out_dir, delay, {**extra, "crop": [int(left), int(top), int(right), int(bottom)],
+                                               "shared": round(float(mask.mean()), 3)}, log)
+
+
+def write_loop(frames, out_dir, delay, extra, log=LOG.info, poster_at=None):
+    """poster.jpg, animation.webp, animation.mp4 (and a small GIF) and action.json for
+    frames that are already lined up and cropped."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    h, w = frames[0].shape[:2]
+    poster = frames[len(frames) // 2 if poster_at is None else poster_at]
+    write_atomic(out_dir / "poster.jpg", cv2.imencode(".jpg", poster, [cv2.IMWRITE_JPEG_QUALITY, 88])[1].tobytes())
     written = write_webp(frames, out_dir / "animation.webp", delay)
     written += write_mp4(frames, out_dir / "animation.mp4", delay)
     written += write_gif(frames, out_dir / "animation.gif", delay)
-    info = {**extra, "frames": len(frames),
-            "size": list(size), "delay_ms": delay, "crop": [int(left), int(top), int(right), int(bottom)],
-            "shared": round(float(mask.mean()), 3), "files": written,
+    info = {**extra, "frames": len(frames), "size": [w, h], "delay_ms": delay, "files": written,
             "made": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     write_atomic(out_dir / "action.json", json.dumps(info, indent=1))
-    log(f"{out_dir.name}: {len(frames)} frames, {size[0]}x{size[1]}, {', '.join(written)}")
+    log(f"{out_dir.name}: {len(frames)} frames, {w}x{h}, {', '.join(written)}")
     return info
 
 

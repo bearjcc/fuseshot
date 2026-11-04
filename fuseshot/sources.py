@@ -28,7 +28,7 @@ DEFAULT_OUTPUT = Path.home() / "Pictures" / "Fuseshot"
 PHOTO_TYPES = {
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".tif": "image/tiff",
     ".tiff": "image/tiff", ".heic": "image/heic", ".heif": "image/heif", ".webp": "image/webp",
-    ".jxl": "image/jxl", **raw.RAW_TYPES,
+    ".jxl": "image/jxl", ".mpo": "image/mpo", **raw.RAW_TYPES,
 }
 PREVIEW_SIDES = {"preview": 1440, "thumbnail": 250}
 FILES_SCHEMA = """
