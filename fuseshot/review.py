@@ -1855,7 +1855,7 @@ class Review:
                 found.append(self.splat_item(row, decisions, candidates))
         return {"items": found, "types": {t: MAKES[t] for t in SET_TYPES}, "models": OVERRIDE_MODELS,
                 "projections": list(stitch.PROJECTIONS), "orientations": list(stitch.ORIENTATIONS),
-                "running": self.running(), "setup": self.needs_setup()}
+                "running": self.running(), "setup": not found and self.needs_setup()}
 
     def watch_changes(self, every=10.0, gap=3.0):
         """Start pushing changes to the list to open pages (GET /api/events)."""
