@@ -251,13 +251,23 @@ def recent_photos(db_path, limit=None):
     """Photos in the cache, newest first: (id, file name, width, height, has camera details, taken)."""
     db = sqlite3.connect(db_path)
     try:
-        sql = ("SELECT id, file_name, mime, width, height, make, model, taken_utc FROM assets "
+        sql = ("SELECT id, file_name, mime, width, height, make, model, taken_utc, focal_length, exposure_time "
+               "FROM assets "
                "WHERE type = 'IMAGE' AND COALESCE(is_trashed, 0) = 0 ORDER BY taken_utc DESC")
         rows = db.execute(sql + (" LIMIT ?" if limit else ""), (limit,) if limit else ()).fetchall()
     finally:
         db.close()
-    return [{"id": r[0], "file_name": r[1], "mime": r[2] or "", "size": (r[3] or 0, r[4] or 0),
-             "camera": bool((r[5] or "").strip() or (r[6] or "").strip()), "taken": r[7]} for r in rows]
+    photos = []
+    for r in rows:
+        camera = bool((r[5] or "").strip() or (r[6] or "").strip())
+        photos.append({"id": r[0], "file_name": r[1], "mime": r[2] or "", "size": (r[3] or 0, r[4] or 0),
+                       "camera": camera, "shot": camera and bool(r[8] or r[9]), "taken": r[7]})
+    return photos
+
+
+def camera_shots(db_path):
+    """Ids of photos whose EXIF names a camera and an exposure or focal length."""
+    return {p["id"] for p in recent_photos(db_path) if p["shot"]}
 
 
 def done_ids(scores_file):
@@ -295,7 +305,7 @@ def score_one(library, photo):
         original = library.original_head(photo["id"], ORIGINAL_BYTES)
         original = original[1] if isinstance(original, tuple) else original
     m = measure(img, head, photo["size"], original)
-    m["camera"] = photo["camera"]
+    m["camera"], m["shot"] = photo["camera"], photo["shot"]
     row = {"v": VERSION, "id": photo["id"], "file_name": photo["file_name"], "taken": photo["taken"], "measures": m}
     rescore(row, colourise_on())
     return img, row
@@ -327,7 +337,7 @@ def scan(db_path, library, out_dir, limit=None, stop_file=None):
             if n % 100 == 0:
                 f.flush()
                 LOG.info(f"  {n}/{len(todo)} scored, {(time.time() - started) / n:.2f} s each")
-    return rank(scores_file, out_dir / "candidates.json")
+    return rank(scores_file, out_dir / "candidates.json", shots=camera_shots(db_path))
 
 
 def colourise_on():
@@ -336,26 +346,35 @@ def colourise_on():
     return config.wants("colourise")
 
 
+def looks_flat_and_crisp(m):
+    return m.get("crisp", 0) >= GRAPHIC_CRISP and m.get("flat", 0) >= GRAPHIC_FLAT
+
+
 def graphic(file_name, camera, m=None):
     """A screenshot, meme, table or drawing rather than a photo, which restoration would not
     help: a lossless or animated file (cameras save JPEG or raw, and screenshots can carry
-    the phone's make and model), a picture that is mostly flat colour with crisp edges, or a
-    black-and-white picture with no camera details and the crisp edges of printed text."""
+    the phone's make and model), a black-and-white picture with no camera details and the
+    crisp edges of printed text, or a picture that is mostly flat colour with crisp edges,
+    unless its EXIF shows a camera took it (make or model with an exposure or focal length)."""
     m = m or {}
-    crisp = m.get("crisp", 0)
     if str(file_name).lower().endswith(GRAPHIC_TYPES):
         return True
-    if not camera and m.get("look") == "mono" and crisp >= MONO_CRISP:
+    if not camera and m.get("look") == "mono" and m.get("crisp", 0) >= MONO_CRISP:
         return True
-    return crisp >= GRAPHIC_CRISP and m.get("flat", 0) >= GRAPHIC_FLAT
+    return looks_flat_and_crisp(m) and not m.get("shot")
 
 
 def rescore(row, colourise=False):
     m = row.get("measures")
-    if m:
-        row["gain"], row["chain"], row["reasons"] = score(m, m.get("camera", True), colourise)
-        if graphic(row.get("file_name", ""), m.get("camera", True), m):
-            row["gain"], row["chain"], row["reasons"] = 0.0, [], []
+    if not m:
+        return
+    camera = m.get("camera", True)
+    if graphic(row.get("file_name", ""), camera, m):
+        row["gain"], row["chain"], row["reasons"] = 0.0, [], []
+        return
+    if looks_flat_and_crisp(m):
+        m = {**m, "specks": 0}  # a camera photo of a sign or a page: its letters are not dust
+    row["gain"], row["chain"], row["reasons"] = score(m, camera, colourise)
 
 
 def write_thumb(img, path):
@@ -365,9 +384,10 @@ def write_thumb(img, path):
     os.replace(tmp, path)
 
 
-def rank(scores_file, candidates_file, keep=KEEP, min_gain=MIN_GAIN, colourise=None):
+def rank(scores_file, candidates_file, keep=KEEP, min_gain=MIN_GAIN, colourise=None, shots=None):
     """Read the scores a line at a time, score them again from their measurements (so a
-    change of settings needs no new scan), keep the best few and write them biggest gain first."""
+    change of settings needs no new scan), keep the best few and write them biggest gain first.
+    `shots`, the ids from camera_shots, fills in camera EXIF for rows scored before it was kept."""
     colourise = colourise_on() if colourise is None else colourise
     best, total, fine = [], 0, 0
     if scores_file.exists():
@@ -380,6 +400,9 @@ def rank(scores_file, candidates_file, keep=KEEP, min_gain=MIN_GAIN, colourise=N
                 if row.get("v") != VERSION:
                     continue
                 total += 1
+                m = row.get("measures")
+                if shots is not None and m and "shot" not in m:
+                    m["shot"] = row["id"] in shots
                 rescore(row, colourise)
                 if row["gain"] < min_gain:
                     fine += 1

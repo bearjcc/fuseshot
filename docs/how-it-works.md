@@ -544,7 +544,8 @@ For those the preview is cut into 8×8 tiles, and a picture counts as a graphic 
 least 25% of the tiles are one flat colour (standard deviation under 1.5 grey levels) and
 at least 3% of its pixels sit on a crisp edge (Sobel magnitude over 200), or, with no camera
 details, when it is black and white with crisp edges on at least 2% (printed text on a
-grey page).
+grey page). A JPEG whose EXIF names a camera and an exposure or focal length is never a
+graphic on its looks alone; if it looks like a sign or a page, only the dust step is dropped.
 Scores and measurements are appended to `work/enhance/scores.jsonl` one photo at a time, so
 a scan can be stopped (`work/batch.stop`) and run again, and it skips photos already
 scored. The ranking is worked out again from the measurements each time, so turning

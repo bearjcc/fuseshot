@@ -212,3 +212,15 @@ def test_a_soft_text_image_is_not_suggested_for_dust_removal(tmp_path):
            "measures": {**measured(soft, False), "specks": 0.02, "long_side": 500}}
     enhance.rescore(row)
     assert row["gain"] == 0 and row["chain"] == []
+
+
+def test_a_camera_photo_is_never_a_graphic_on_looks_alone(tmp_path):
+    soft_sign = {**measured(cv2.GaussianBlur(text_page(), (0, 0), 1.0), True), "specks": 0.02, "long_side": 500}
+    rows = [{"v": enhance.VERSION, "id": name, "file_name": name, "gain": 0, "chain": [], "reasons": [],
+             "measures": soft_sign} for name in ("sign.jpg", "saved.jpg", "Screenshot.png")]
+    scores = tmp_path / "scores.jsonl"
+    scores.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    found = enhance.rank(scores, tmp_path / "c.json", min_gain=1, colourise=False,
+                         shots={"sign.jpg", "Screenshot.png"})
+    assert [r["id"] for r in found["candidates"]] == ["sign.jpg"]
+    assert "lama" not in found["candidates"][0]["chain"]
