@@ -76,7 +76,7 @@ SPLAT_FILES = {"scene.splat": "application/octet-stream"}
 WEB_DIR = Path(__file__).resolve().parent / "web"
 WEB_FILES = {"review.css": "text/css; charset=utf-8", "review.js": "text/javascript; charset=utf-8",
              "icons.js": "text/javascript; charset=utf-8", "found.js": "text/javascript; charset=utf-8",
-             "settings.js": "text/javascript; charset=utf-8"}
+             "settings.js": "text/javascript; charset=utf-8", "compare.js": "text/javascript; charset=utf-8"}
 KINDS = ("stitch", "group", "action", "splat", "found")
 
 
@@ -2092,11 +2092,49 @@ class Review:
         return (
             "<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
             "<title>Enhance candidates</title>" + INDEX_STYLE + base_script(self.base) +
-            f"<h2>Enhance candidates</h2><p><a href='{self.base}/'>Back to the review grid</a></p>{note}"
+            f"<h2>Enhance candidates</h2><p><a href='{self.base}/'>Back to the review grid</a> · "
+            f"<a href='{self.base}/enhance/compare'>Compare restored photos</a></p>{note}"
             f"<p class='dim'>{found['scored']} photos scored, {found['fine']} look fine. Expected gain is out of "
             "100. This list only reads your photos; nothing is changed or uploaded.</p>"
             + (f"<table id='enhance'><tr><th></th><th>Gain</th><th>Photo</th><th>Why</th><th>Suggested steps</th></tr>"
                f"{rows}</table>" if rows else empty))
+
+    def compare_page(self):
+        from .enhance_review import PAGE
+
+        version = max(int((WEB_DIR / name).stat().st_mtime) for name in WEB_FILES)
+        return PAGE.format(base=html.escape(self.base), v=version, base_script=base_script(self.base))
+
+    def enhance_queue(self):
+        from . import enhance_review
+
+        return {"items": [{"id": r["id"], "gain": r.get("gain"), "chain": r["chain"]}
+                          for r in enhance_review.queue(self.enhance_dir())]}
+
+    def enhance_result_file(self, asset_id, name):
+        from . import restore
+
+        if name not in ("view-original.jpg", "view-enhanced.jpg") or not asset_id.replace("-", "").isalnum():
+            raise KeyError(name)
+        path = restore.results_dir(self.enhance_dir()) / asset_id / name
+        if not path.exists():
+            raise KeyError(name)
+        return path
+
+    def enhance_decide(self, body):
+        from . import enhance_review, restore
+
+        asset_id, pick, side = body.get("id"), body.get("pick"), body.get("enhanced_side")
+        if pick not in enhance_review.PICKS or side not in ("left", "right"):
+            raise ValueError("pick must be enhanced, original or face, and enhanced_side left or right")
+        if not (restore.results_dir(self.enhance_dir()) / str(asset_id) / "result.json").exists():
+            raise KeyError(asset_id)
+        row = enhance_review.record(self.enhance_dir(), asset_id, pick, side, file=f"{asset_id}/enhanced.jpg")
+        sent = None
+        if pick == "enhanced":
+            client = self.uploader.client if self.uploader else None
+            sent = enhance_review.keep(self.enhance_dir(), asset_id, client)
+        return {"decision": row, "sent": sent}
 
     def enhance_file(self, name):
         from . import enhance
@@ -2361,6 +2399,12 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send_json(200, settings_web.output_status())
                 elif parts == ["enhance"]:
                     return self.send(200, review.enhance_page())
+                elif parts == ["enhance", "compare"]:
+                    return self.send(200, review.compare_page())
+                elif parts == ["api", "enhance", "queue"]:
+                    return self.send_json(200, review.enhance_queue())
+                elif parts[0] == "enhanceresult" and len(parts) == 3:
+                    return self.send_file(review.enhance_result_file(parts[1], parts[2]), False)
                 elif parts[0] == "enhancefile" and len(parts) == 2:
                     return self.send_file(review.enhance_file(parts[1]), False)
                 elif parts == ["tables"]:
@@ -2447,6 +2491,8 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send_json(200, review.edit(body))
                 if path == "/render":
                     return self.send_json(200, review.render(body))
+                if path == "/enhance/decide":
+                    return self.send_json(200, review.enhance_decide(body))
                 if path == "/fill":
                     return self.send_json(200, review.queue_fill(body))
                 if path == "/group/choose":

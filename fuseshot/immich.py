@@ -69,6 +69,10 @@ class Immich:
         return self._request("POST", "/api/assets", data=body, content_type=content_type,
                              extra_headers=headers, retries=1)
 
+    def create_stack(self, asset_ids):
+        """Stack these assets in Immich, the first one on top."""
+        return self._request("POST", "/api/stacks", {"assetIds": list(asset_ids)})
+
     def albums(self):
         return self._request("GET", "/api/albums")
 

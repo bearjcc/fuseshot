@@ -355,3 +355,10 @@ body.editor { overflow: hidden; }
 }
 .settings .toolbar { position: static; }
 body.on-settings .usage:not(#running), body.on-settings .search { visibility: hidden; }
+
+/* blind A/B compare */
+.ab-stage { position: absolute; inset: 64px 0 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px; }
+.ab-stage figure { margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; }
+.ab-stage img { max-width: 100%; max-height: calc(100% - 28px); object-fit: contain; display: block; }
+.ab-stage figcaption { margin-top: 6px; color: #9ca3af; font-weight: 600; }
+@media (max-width: 699px) { .ab-stage { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
