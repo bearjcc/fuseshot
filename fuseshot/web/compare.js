@@ -36,7 +36,8 @@ async function answer(pick) {
   const body = await r.json().catch(() => ({}));
   if (!r.ok) return toast(body.error || "Could not save", true);
   const words = {enhanced: "Kept the enhanced photo", original: "Kept the original", face: "Kept the original; face marked"};
-  toast(`${words[pick]} (A was the ${enhancedSide === "left" ? "enhanced" : "original"} one)`);
+  const extra = body.face_pass ? "; the face pass is queued and it comes back here when done" : "";
+  toast(`${words[pick]} (A was the ${enhancedSide === "left" ? "enhanced" : "original"} one)${extra}`);
   show();
 }
 

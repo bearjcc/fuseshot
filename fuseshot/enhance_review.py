@@ -3,7 +3,7 @@
 Each finished result that clearly differs from its original is shown beside it, with
 the sides shuffled, biggest expected gain first. The answer is one of: keep the
 enhanced photo, keep the original, or the face looks wrong (kept as the original and
-marked for the optional face pass).
+run again with the face pass when the Face repair pack is installed).
 
 Answers are appended to work/enhance/decisions.jsonl, one JSON object per line in the
 record shape Choice uses (type, id, item, direction, value, label, note, ts, file), so
@@ -52,10 +52,25 @@ def decisions(enhance_dir):
     return latest
 
 
+def waiting(result, decision):
+    """No answer yet, or Face looks wrong and the face pass has finished since."""
+    if decision is None:
+        return True
+    return (decision.get("value") == PICKS["face"][1] and "codeformer" in result["chain"]
+            and _utc(result.get("finished")) > _utc(decision.get("ts")))
+
+
+def _utc(stamp):
+    try:
+        return datetime.fromisoformat(stamp).astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def queue(enhance_dir):
     """Results waiting for an answer: finished, clearly different, biggest gain first."""
     done = decisions(enhance_dir)
-    return [r for r in restore.results(enhance_dir) if r.get("differs") and r["id"] not in done]
+    return [r for r in restore.results(enhance_dir) if r.get("differs") and waiting(r, done.get(r["id"]))]
 
 
 def record(enhance_dir, asset_id, pick, enhanced_side, note="", file=None):
