@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `fuseshot moving` finds sets whose subject moves (people, animals, vehicles)
+  and sends them to loops instead of splats. Sets can also be marked by hand.
 - `fuseshot enhance-scan` ranks photos that restoration could help (blur,
   noise, JPEG quality, low resolution, faded scans, dust), with a suggested chain
   of steps and the reasons, listed read-only on the review page. Off by default.
