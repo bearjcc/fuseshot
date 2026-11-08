@@ -205,6 +205,101 @@ document.querySelectorAll("select[data-type-set]").forEach(s => s.addEventListen
 }));
 </script>"""
 
+EDITOR_HEAD = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fuseshot {kind} {set_id}</title>
+<link rel="stylesheet" href="{base}/static/review.css?v={static_version}">
+{extra_head}{base_script}
+</head><body class="editor">
+"""
+
+EDITOR_TOP = """    <div class="v-top">
+      <a class="icon-btn" href="{base}/" title="Back to the review grid (Esc)" data-icon="arrowLeft"></a>
+      <div class="v-title"><b>{title}</b><span>{subtitle}</span></div>
+      <div class="spacer"></div>
+      {immich}
+      <a class="icon-btn" href="{base}/tables{tables}" title="Tables and candidate sets" data-icon="table"></a>
+      <button class="icon-btn on" id="vinfo" title="Info (I)" data-icon="info"></button>
+    </div>
+    <div class="v-bottom"><div class="v-actions">{tools}
+      <button class="act discard" data-decision="discarded" title="Discard (D): hidden from the queue and never exported; undo it from the Discarded list"><span data-icon="close"></span><span class="lbl">Discard</span></button>
+      <button class="act keep" data-decision="kept" title="Keep (K): exported, and uploaded when uploads are on"><span data-icon="check"></span><span class="lbl">Keep</span></button>
+    </div></div>
+"""
+
+EDITOR_PANEL = """  <aside id="vpanel" class="v-panel">
+    <div class="p-head"><button class="icon-btn" id="pclose" title="Close (I)" data-icon="close"></button><h2>Info</h2></div>
+    <div class="p-body">
+      <div class="p-section"><div class="p-label">Decision</div><span id="status" class="p-chip {decision_class}">{decision}</span></div>
+      <div class="p-section"><div class="p-label">Details</div><p class="ed-text">{summary}</p></div>
+      {sections}
+      <label class="p-field"><span>Type</span>{type_select}</label>
+      <label class="p-field"><span>Note</span><textarea id="note" placeholder="Optional, saved with the decision"></textarea></label>
+      <details class="p-section"><summary class="p-label">{details_label}</summary><pre class="ed-pre">{details}</pre></details>
+      <p class="ed-foot">Fuseshot is free software under the AGPL. <a href="https://github.com/bearjcc/fuseshot">Source code</a></p>
+    </div>
+  </aside>
+</div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+"""
+
+EDITOR_SCRIPT = """<script type="module">
+import { ICONS } from "%(base)s/static/icons.js?v=%(static_version)s";
+document.querySelectorAll("[data-icon]").forEach(el => {
+  const d = ICONS[el.dataset.icon];
+  if (d) el.insertAdjacentHTML("afterbegin", `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`);
+});
+const panel = document.getElementById("vpanel"), info = document.getElementById("vinfo");
+const showPanel = on => { panel.hidden = !on; info.classList.toggle("on", on); };
+showPanel(!matchMedia("(max-width: 899px)").matches);
+info.onclick = () => showPanel(panel.hidden);
+document.getElementById("pclose").onclick = () => showPanel(false);
+function toast(text, error) {
+  const t = document.createElement("div");
+  t.className = "toast" + (error ? " error" : "");
+  t.textContent = text;
+  document.getElementById("toasts").appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+window.fuseshotToast = toast;
+async function decide(decision) {
+  if (window.fuseshotDecide) return window.fuseshotDecide(decision);
+  const r = await fetch(BASE + "/decision", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({set: %(set_json)s, kind: "%(kind)s", decision, note: document.getElementById("note").value})});
+  const data = await r.json().catch(() => ({}));
+  const status = document.getElementById("status");
+  if (r.ok) {
+    status.textContent = data.decision;
+    status.className = "p-chip " + data.decision;
+    toast(data.decision === "kept" ? "Kept" : "Discarded");
+  } else toast("Not saved: " + (data.error || r.statusText), true);
+}
+document.querySelectorAll("[data-decision]").forEach(b => b.addEventListener("click", () => decide(b.dataset.decision)));
+document.addEventListener("keydown", e => {
+  if (e.target.closest("textarea, input, select") || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.defaultPrevented) return;
+  const key = e.key.toLowerCase();
+  if (key === "k") decide("kept");
+  else if (key === "d") decide("discarded");
+  else if (key === "i") showPanel(panel.hidden);
+  else if (key === "escape") location.href = BASE + "/";
+});
+</script>"""
+
+
+def editor_page(kind, set_id, base, stage, panel, top, extra_head="", scripts=""):
+    """The shared editor layout: stage, top bar, actions and the info panel."""
+    static_version = max(int((WEB_DIR / name).stat().st_mtime) for name in WEB_FILES)
+    head = EDITOR_HEAD.format(kind=kind, set_id=html.escape(set_id), base=base, static_version=static_version,
+                              extra_head=extra_head, base_script=base_script(base))
+    script = EDITOR_SCRIPT % {"base": base, "static_version": static_version,
+                              "set_json": json.dumps(set_id), "kind": kind}
+    return (head + '<div class="viewer ed">\n  <div class="v-main">\n' + stage + EDITOR_TOP.format(base=base, **top)
+            + "  </div>\n" + EDITOR_PANEL.format(**panel)
+            + OVERRIDE_SCRIPT + script + scripts + "</body></html>\n")
+
+
 LOOP_PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -284,95 +379,49 @@ document.addEventListener("keydown", e => {{
 </script></body></html>
 """
 
-GROUP_PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fuseshot group {set_id}</title>
-<style>
-body {{ font-family: sans-serif; margin: 0; background: #1b1b1b; color: #ddd; }}
-header {{ padding: 10px 16px; background: #262626; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }}
-a {{ color: #9cf; }}
-main {{ padding: 12px 16px; }}
-button {{ padding: 6px 14px; font-size: 15px; cursor: pointer; }}
-select, input {{ background: #2a2a2a; color: #ddd; border: 1px solid #444; }}
-.keep {{ background: #2e7d32; color: white; border: 0; }}
-.discard {{ background: #b71c1c; color: white; border: 0; }}
-#status, #queue {{ color: #fc6; }}
-.pair {{ display: flex; gap: 10px; flex-wrap: wrap; }}
-.shot {{ flex: 1 1 560px; }}
-.frame {{ position: relative; }}
-.frame img {{ width: 100%; display: block; background: #111; }}
-.box {{ position: absolute; border: 2px solid #ffd54f; cursor: pointer; box-sizing: border-box; }}
-.box span {{ position: absolute; left: 0; top: -18px; font-size: 12px; background: #000a; padding: 0 3px; white-space: nowrap; }}
-.box.swapped {{ border-color: #66bb6a; }}
-.box.rejected {{ border-color: #ef5350; }}
-.box.pending {{ border-style: dashed; }}
-.people {{ display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }}
-.person {{ background: #232323; padding: 6px; }}
-.person img {{ height: 80px; margin: 2px; cursor: pointer; border: 2px solid transparent; }}
-.person img.chosen {{ border-color: #66bb6a; }}
-.person img.pending {{ border-color: #fc6; }}
-.dim {{ color: #888; font-size: 13px; }}
-pre {{ background: #222; padding: 8px; overflow: auto; font-size: 12px; }}
-</style></head><body>
-{base_script}
-<header>
-<a href="{base}/">Review grid</a> <a href="{base}/tables#groups">Tables</a>
-<strong>{set_id}</strong>
-<span>Type {type_select}</span>
-<input id="note" placeholder="note (optional)" size="28">
-<button class="keep" data-decision="kept" title="exported, and uploaded when uploads are on">Keep</button>
-<button class="discard" data-decision="discarded" title="hidden from the queue and never exported; undo it from the Discarded list">Discard</button>
-<span id="status">{decision}</span>
-</header>
-<main>
-<p>{summary}</p>
-<p class="dim">Composite (best-shot merge): each face may come from a different frame of the burst. Click a face box
-to cycle through that person's frames, or pick a crop below; each change queues a small re-merge.
-Green boxes were swapped in, yellow are from the base frame, red were kept because the swap failed its checks.
-<span id="queue">{queue}</span></p>
-<div class="pair">
-<div class="shot"><div>Base frame #{base_frame}</div><div class="frame" id="basebox"><img alt="base frame" src="{base}/groupfile/{set_id}/base.jpg?v={version}"></div></div>
-<div class="shot"><div>Merged</div><div class="frame" id="mergedbox"><img alt="merged" src="{base}/groupfile/{set_id}/merged.jpg?v={version}"></div></div>
-</div>
-<div class="people" id="people"></div>
-<details><summary>Merge record</summary><pre>{details}</pre></details>
-<p class="muted" style="margin-top:2em;font-size:12px">Fuseshot is free software under the AGPL. <a href="https://github.com/bearjcc/fuseshot">Source code</a></p>
-</main>
-""" + OVERRIDE_SCRIPT.replace("{", "{{").replace("}", "}}") + """
-<script>
-const SET = {set_json}, RECORD = {record_json}, VERSION = {version};
-let CHOICES = {choices_json};
-const pct = (v, total) => (100 * v / total) + "%";
-function chosen(p) {{
-  const picked = (CHOICES.faces || {{}})[String(p.id)];
+GROUP_STAGE = """    <div class="ed-stage ed-scroll"><div class="g-pair">
+<div class="g-shot"><div class="p-label">Base frame #{base_frame}</div><div class="frame" id="basebox"><img alt="base frame" src="{base}/groupfile/{set_id}/base.jpg?v={version}"></div></div>
+<div class="g-shot"><div class="p-label">Merged</div><div class="frame" id="mergedbox"><img alt="merged" src="{base}/groupfile/{set_id}/merged.jpg?v={version}"></div></div>
+</div><div class="people" id="people"></div></div>
+"""
+
+GROUP_HELP = """<div class="p-section"><div class="p-label">Faces</div><p class="ed-text">Each face may come from a different frame of the burst. Click a face box on the merged picture to cycle through that person's frames, or pick a crop under the pictures; each change queues a small re-merge. Green boxes were swapped in, yellow are from the base frame, red were kept because the swap failed its checks.</p><p class="ed-text" id="queue">{queue}</p></div>
+<div class="p-section"><div class="p-label">Download</div><div class="p-links"><a target="_blank" href="{base}/groupfile/{set_id}/merged.jpg" data-icon="openInNew"><span>Full size</span></a><a target="_blank" href="{base}/groupfile/{set_id}/overlay.jpg" data-icon="openInNew"><span>Face sources</span></a></div></div>"""
+
+GROUP_SCRIPT = """<script>
+const SET = %(set_json)s, RECORD = %(record_json)s, VERSION = %(version)s;
+let CHOICES = %(choices_json)s;
+const pct = (v, total) => (100 * v / total) + "%%";
+function chosen(p) {
+  const picked = (CHOICES.faces || {})[String(p.id)];
   return picked === undefined ? p.source_frame : Number(picked);
-}}
-function draw() {{
+}
+function draw() {
   const [W, H] = RECORD.size;
-  for (const id of ["basebox", "mergedbox"]) {{
+  for (const id of ["basebox", "mergedbox"]) {
     const holder = document.getElementById(id);
     holder.querySelectorAll(".box").forEach(b => b.remove());
-    for (const p of RECORD.people) {{
+    for (const p of RECORD.people) {
       const [x, y, w, h] = p.box, b = document.createElement("div");
       const now = chosen(p), pending = now !== p.source_frame;
       b.className = "box" + (p.swapped ? " swapped" : "") + (p.rejected ? " rejected" : "") + (pending ? " pending" : "");
-      Object.assign(b.style, {{left: pct(x, W), top: pct(y, H), width: pct(w, W), height: pct(h, H)}});
+      Object.assign(b.style, {left: pct(x, W), top: pct(y, H), width: pct(w, W), height: pct(h, H)});
       b.title = p.rejected ? "kept from the base: " + p.rejected : "face " + p.id + " from frame #" + (now + 1);
       b.innerHTML = "<span>" + p.id + ": #" + (now + 1) + (pending ? " (queued)" : "") + "</span>";
-      if (id === "mergedbox") b.addEventListener("click", () => {{
+      if (id === "mergedbox") b.addEventListener("click", () => {
         const frames = p.options.map(o => o.frame), i = frames.indexOf(now);
-        choose(p.id, frames[(i + 1) % frames.length]);
-      }});
+        choose(p.id, frames[(i + 1) %% frames.length]);
+      });
       holder.appendChild(b);
-    }}
-  }}
+    }
+  }
   const people = document.getElementById("people");
   people.innerHTML = "";
-  for (const p of RECORD.people) {{
+  for (const p of RECORD.people) {
     const div = document.createElement("div"), now = chosen(p);
     div.className = "person";
     div.innerHTML = "<div class='dim'>face " + p.id + (p.rejected ? " (swap failed: " + p.rejected + ")" : "") + "</div>";
-    for (const o of p.options) {{
+    for (const o of p.options) {
       const img = document.createElement("img");
       img.src = BASE + "/groupfile/" + SET + "/faces/" + p.id + "_" + o.frame + ".jpg?v=" + VERSION;
       img.title = "frame #" + (o.frame + 1) + ": score " + o.score.toFixed(2) + ", eyes " + o.eyes.toFixed(2)
@@ -380,178 +429,125 @@ function draw() {{
       img.className = o.frame === p.source_frame ? "chosen" : (o.frame === now ? "pending" : "");
       img.addEventListener("click", () => choose(p.id, o.frame));
       div.appendChild(img);
-    }}
+    }
     people.appendChild(div);
-  }}
-}}
-async function choose(person, frame) {{
-  const r = await fetch(BASE + "/group/choose", {{method: "POST", headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify({{set: SET, person: person, frame: frame}})}});
+  }
+}
+async function choose(person, frame) {
+  const r = await fetch(BASE + "/group/choose", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({set: SET, person: person, frame: frame})});
   const data = await r.json();
-  if (!r.ok) {{ document.getElementById("queue").textContent = "failed: " + (data.error || r.statusText); return; }}
+  if (!r.ok) { document.getElementById("queue").textContent = "failed: " + (data.error || r.statusText); return; }
   CHOICES = data.choices;
   document.getElementById("queue").textContent = "Re-merge queued as task " + data.task + "; reload when it is done.";
   draw();
-}}
+}
 draw();
-document.querySelectorAll("[data-decision]").forEach(b => b.addEventListener("click", async () => {{
-  const r = await fetch(BASE + "/decision", {{method: "POST", headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify({{set: SET, kind: "group", decision: b.dataset.decision,
-      note: document.getElementById("note").value}})}});
-  const data = await r.json();
-  document.getElementById("status").textContent = r.ok ? `${{data.decision}} (saved to reviews.json)`
-    : "save failed: " + (data.error || r.statusText);
-}}));
-</script></body></html>
+</script>
 """
 
-SPLAT_PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fuseshot splat {set_id}</title>
-<style>
-body {{ font-family: sans-serif; margin: 0; background: #1b1b1b; color: #ddd; }}
-header {{ padding: 10px 16px; background: #262626; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }}
-a {{ color: #9cf; }}
-main {{ padding: 12px 16px; }}
-#view {{ width: 100%; height: 74vh; display: block; background: #111; touch-action: none; }}
-button {{ padding: 6px 14px; font-size: 15px; cursor: pointer; }}
-select, input {{ background: #2a2a2a; color: #ddd; border: 1px solid #444; }}
-.keep {{ background: #2e7d32; color: white; border: 0; }}
-.discard {{ background: #b71c1c; color: white; border: 0; }}
-#status, #loading {{ color: #fc6; }}
-pre {{ background: #222; padding: 8px; overflow: auto; font-size: 12px; }}
-</style>
-<script type="importmap">{import_map}</script>
-</head><body>
-{base_script}
-<header>
-<a href="{base}/">Review grid</a> <a href="{base}/tables#splats">Tables</a>
-<strong>{set_id}</strong>
-<span>Type {type_select}</span>
-<input id="note" placeholder="note (optional)" size="28">
-<button class="keep" data-decision="kept" title="exported, and uploaded when uploads are on">Keep</button>
-<button class="discard" data-decision="discarded" title="hidden from the queue and never exported; undo it from the Discarded list">Discard</button>
-<span id="status">{decision}</span>
-</header>
-<main>
-<p>{summary} <span id="loading">{loading}</span></p>
-<canvas id="view"></canvas>
-<p class="dim">Drag to orbit, right-drag or two fingers to pan, scroll or pinch to zoom.
-<button id="reset">Reset view</button> <button id="spin">Auto-rotate</button>
-<a href="{base}/splatfile/{set_id}/scene.splat?v={version}" download="{set_id}.splat">Download .splat</a></p>
-<details><summary>SfM and training</summary><pre>{details}</pre></details>
-<p class="muted" style="margin-top:2em;font-size:12px">Fuseshot is free software under the AGPL. <a href="https://github.com/bearjcc/fuseshot">Source code</a></p>
-</main>
-""" + OVERRIDE_SCRIPT.replace("{", "{{").replace("}", "}}") + """
-<script>
-document.querySelectorAll("[data-decision]").forEach(b => b.addEventListener("click", async () => {{
-  const r = await fetch(BASE + "/decision", {{method: "POST", headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify({{set: {set_id_json}, kind: "splat", decision: b.dataset.decision,
-      note: document.getElementById("note").value}})}});
-  const data = await r.json();
-  document.getElementById("status").textContent = r.ok ? `${{data.decision}} (saved to reviews.json)`
-    : "save failed: " + (data.error || r.statusText);
-}}));
-</script>
-<script type="module">
-import * as THREE from "three";
-import {{ OrbitControls }} from "three/addons/controls/OrbitControls.js";
-import {{ SparkRenderer, SplatMesh }} from "spark";
+SPLAT_STAGE = """    <div class="ed-stage ed-full"><canvas id="view"></canvas><span id="loading" class="ed-loading">{loading}</span></div>
+"""
 
-const view = {view_json};
-const url = {url_json};
+SPLAT_TOOLS = """
+      <button class="act skip" id="reset" title="Reset view"><span data-icon="restore"></span></button>
+      <button class="act skip" id="spin" title="Auto-rotate"><span data-icon="rotate"></span></button>"""
+
+SPLAT_HELP = """<div class="p-section"><div class="p-label">View</div><p class="ed-text">Drag to orbit, right-drag or two fingers to pan, scroll or pinch to zoom.</p></div>
+<div class="p-section"><div class="p-label">Download</div><div class="p-links"><a href="{base}/splatfile/{set_id}/scene.splat?v={version}" download="{set_id}.splat" data-icon="download"><span>.splat</span></a></div></div>"""
+
+SPLAT_SCRIPT = """<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { SparkRenderer, SplatMesh } from "spark";
+
+const view = %(view_json)s;
+const url = %(url_json)s;
 const canvas = document.getElementById("view");
 const loading = document.getElementById("loading");
-if (url) {{
-  const renderer = new THREE.WebGLRenderer({{canvas, antialias: false}});
+if (url) {
+  const renderer = new THREE.WebGLRenderer({canvas, antialias: false});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(view.fov || 50, 1, 0.01, 1000);
-  scene.add(new SparkRenderer({{renderer}}));
-  const start = () => {{
+  scene.add(new SparkRenderer({renderer}));
+  const start = () => {
     camera.up.fromArray(view.up || [0, -1, 0]);
     camera.position.fromArray(view.position || [0, 0, -3]);
     camera.lookAt(new THREE.Vector3().fromArray(view.target || [0, 0, 0]));
-  }};
+  };
   start();
   const controls = new OrbitControls(camera, canvas);
   controls.target.fromArray(view.target || [0, 0, 0]);
   controls.enableDamping = true;
   controls.update();
-  const mesh = new SplatMesh({{url, fileType: "splat"}});
+  const mesh = new SplatMesh({url, fileType: "splat"});
   scene.add(mesh);
-  mesh.initialized.then(() => {{ loading.textContent = ""; }},
-    err => {{ loading.textContent = "could not load the splat: " + err; }});
-  document.getElementById("reset").onclick = () => {{
+  mesh.initialized.then(() => { loading.textContent = ""; },
+    err => { loading.textContent = "could not load the splat: " + err; });
+  document.getElementById("reset").onclick = () => {
     start(); controls.target.fromArray(view.target || [0, 0, 0]); controls.update();
-  }};
-  document.getElementById("spin").onclick = () => {{ controls.autoRotate = !controls.autoRotate; }};
-  const resize = () => {{
+  };
+  document.getElementById("spin").onclick = () => { controls.autoRotate = !controls.autoRotate; };
+  const resize = () => {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
-  }};
+  };
   window.addEventListener("resize", resize);
   resize();
-  renderer.setAnimationLoop(() => {{ controls.update(); renderer.render(scene, camera); }});
-  window.fuseshotSplat = {{renderer, scene, camera, controls, mesh}};
-}}
-</script></body></html>
+  renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+  window.fuseshotSplat = {renderer, scene, camera, controls, mesh};
+}
+</script>
 """
 
 PAGE = """<!doctype html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fuseshot review {set_id}</title>
-<style>
-body {{ font-family: sans-serif; margin: 0; background: #1b1b1b; color: #ddd; }}
-header {{ padding: 10px 16px; background: #262626; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }}
-header a {{ color: #9cf; }}
-main {{ padding: 12px 16px; }}
-#preview {{ max-width: 100%; max-height: 78vh; display: block; margin: 0 auto; background: #111; cursor: zoom-in; }}
-#viewer {{ position: fixed; inset: 0; background: #000; z-index: 10; overflow: hidden; touch-action: none; cursor: grab; }}
-#viewer img {{ position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; user-select: none; -webkit-user-drag: none; }}
-#viewer .bar {{ position: absolute; top: 8px; right: 12px; z-index: 11; display: flex; gap: 8px; align-items: center; }}
-#viewer .bar a, #viewer .bar span {{ color: #9cf; background: #000a; padding: 4px 8px; }}
-button {{ padding: 6px 14px; font-size: 15px; cursor: pointer; }}
-.keep {{ background: #2e7d32; color: white; border: 0; }}
-.discard {{ background: #b71c1c; color: white; border: 0; }}
-#status {{ color: #fc6; }}
-pre {{ background: #222; padding: 8px; overflow: auto; font-size: 12px; }}
-</style></head><body>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fuseshot panorama {set_id}</title>
+<link rel="stylesheet" href="{base}/static/review.css?v={static_version}">
 {base_script}
-<header>
-<a href="{base}/">Review grid</a> <a href="{base}/tables">Tables</a>
-<strong>{set_id}</strong>
-<label>Projection <select id="projection">{projection_options}</select></label>
-<label>Orientation <select id="orientation">{orientation_options}</select></label>
-<label><input type="checkbox" id="crop"> Crop to fit</label>
-<label title="Empty border painted in by a local AI model (LaMa); real pixels are kept"><input type="checkbox" id="fill"> Fill (AI)</label>
-<label><input type="checkbox" id="fillshow" disabled> show filled areas</label>
-<button id="queuefill" title="Queue an AI fill of this view on the GPU queue">Queue AI fill</button>
-<button id="render">Render</button>
-<input id="note" placeholder="note (optional)" size="28">
-<button class="keep" data-decision="kept" title="exported, and uploaded when uploads are on">Keep</button>
-<button class="discard" data-decision="discarded" title="hidden from the queue and never exported; undo it from the Discarded list">Discard</button>
-<span id="status">{decision}</span>
-</header>
-<main>
-<p>{verified}</p>
-<img id="preview" alt="preview" title="Click to zoom">
-<p id="fullsize" hidden><a id="fulllink" target="_blank">Open full size</a> <span class="dim">(click the image to zoom and drag)</span></p>
-<p id="missing" hidden>Not rendered yet. Press Render (takes 15 to 60 seconds).</p>
-<p id="nofill" hidden></p>
-<details><summary>Alignment details</summary><pre>{layout}</pre></details>
-<p class="muted" style="margin-top:2em;font-size:12px">Fuseshot is free software under the AGPL. <a href="https://github.com/bearjcc/fuseshot">Source code</a></p>
-</main>
+</head><body class="editor">
+<div class="viewer ed">
+  <div class="v-main">
+    <div class="ed-stage">
+      <img id="preview" alt="preview" title="Click to zoom">
+      <p id="missing" class="ed-text" hidden>Not rendered yet. Press Render (takes 15 to 60 seconds).</p>
+    </div>
+{top}  </div>
+  <aside id="vpanel" class="v-panel">
+    <div class="p-head"><button class="icon-btn" id="pclose" title="Close (I)" data-icon="close"></button><h2>Info</h2></div>
+    <div class="p-body">
+      <div class="p-section"><div class="p-label">Decision</div><span id="status" class="p-chip {decision_class}">{decision}</span></div>
+      <div class="p-section"><div class="p-label">Details</div><p class="ed-text">{verified}</p></div>
+      <div class="p-section"><div class="p-label">View</div>
+        <label class="p-field"><span>Projection</span><select id="projection">{projection_options}</select></label>
+        <label class="p-field"><span>Orientation</span><select id="orientation">{orientation_options}</select></label>
+        <label class="p-check"><input type="checkbox" id="crop"> Crop to fit</label>
+        <label class="p-check" title="Empty border painted in by a local AI model (LaMa); real pixels are kept"><input type="checkbox" id="fill"> Fill (AI)</label>
+        <label class="p-check"><input type="checkbox" id="fillshow" disabled> Show filled areas</label>
+        <p id="nofill" class="ed-text" hidden></p>
+        <div class="p-links"><button class="p-btn" id="render" data-icon="play"><span>Render</span></button>
+          <button class="p-btn" id="queuefill" title="Queue an AI fill of this view on the GPU queue" data-icon="magic"><span>Queue AI fill</span></button></div>
+        <p id="fullsize" hidden><a id="fulllink" target="_blank">Open full size</a></p>
+      </div>
+      <label class="p-field"><span>Note</span><textarea id="note" placeholder="Optional, saved with the decision"></textarea></label>
+      <details class="p-section"><summary class="p-label">Alignment details</summary><pre class="ed-pre">{layout}</pre></details>
+      <p class="ed-foot">Fuseshot is free software under the AGPL. <a href="https://github.com/bearjcc/fuseshot">Source code</a></p>
+    </div>
+  </aside>
+</div>
+<div id="toasts" class="toasts" aria-live="polite"></div>
 <div id="viewer" hidden><div class="bar"><span id="zoomlevel"></span><a id="viewerclose" href="#">Close (Esc)</a></div><img id="full" alt="full size"></div>
 """ + OVERRIDE_SCRIPT.replace("{", "{{").replace("}", "}}") + """
 <script>
 const setId = {set_id_json};
 let versions = {versions_json};
 let fills = {fills_json};
-$("crop").checked = CROP;
 const $ = id => document.getElementById(id);
+$("crop").checked = CROP;
 function name() {{
   const o = $("orientation").value;
   return $("projection").value + (o === "level" ? "" : "-" + o);
@@ -579,7 +575,6 @@ function show() {{
   $("nofill").hidden = !filled;
   $("nofill").textContent = fillNote() || "No AI fill for this view yet. Press Queue AI fill; it runs as its own job on the GPU queue.";
   $("queuefill").disabled = f.state === "queued" || versions[name()] === undefined;
-  $("status").title = fillNote();
   const have = versions[name()] !== undefined && (!filled || f.state === "done");
   $("missing").hidden = have;
   $("preview").hidden = !have;
@@ -620,7 +615,9 @@ function openViewer() {{
 function closeViewer() {{ $("viewer").hidden = true; }}
 $("preview").addEventListener("click", openViewer);
 $("viewerclose").addEventListener("click", e => {{ e.preventDefault(); closeViewer(); }});
-document.addEventListener("keydown", e => {{ if (e.key === "Escape") closeViewer(); }});
+document.addEventListener("keydown", e => {{
+  if (e.key === "Escape" && !$("viewer").hidden) {{ e.preventDefault(); closeViewer(); }}
+}});
 $("viewer").addEventListener("wheel", e => {{ e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.2 : 1 / 1.2); }}, {{passive: false}});
 $("viewer").addEventListener("dblclick", e => zoomAt(e.clientX, e.clientY, 2));
 const pointers = new Map();
@@ -663,30 +660,32 @@ $("queuefill").addEventListener("click", async () => {{
   try {{
     const r = await post("/fill", {{set: setId, name: name()}});
     fills = r.fills;
-    $("status").textContent = `AI fill queued as GPU task ${{r.task}}`;
+    window.fuseshotToast?.(`AI fill queued as GPU task ${{r.task}}`);
     show();
-  }} catch (e) {{ $("status").textContent = "queue failed: " + e.message; }}
+  }} catch (e) {{ window.fuseshotToast?.("Queue failed: " + e.message, true); }}
 }});
 $("render").addEventListener("click", async () => {{
-  $("status").textContent = "rendering...";
+  window.fuseshotToast?.("Rendering...");
   try {{
     const info = await post("/render", {{set: setId, projection: $("projection").value, orientation: $("orientation").value}});
     versions = info.versions;
-    $("status").textContent = `rendered in ${{info.seconds}} s`;
+    window.fuseshotToast?.(`Rendered in ${{info.seconds}} s`);
     show();
-  }} catch (e) {{ $("status").textContent = "render failed: " + e.message; }}
+  }} catch (e) {{ window.fuseshotToast?.("Render failed: " + e.message, true); }}
 }});
-document.querySelectorAll("[data-decision]").forEach(b => b.addEventListener("click", async () => {{
+window.fuseshotDecide = async decision => {{
   try {{
-    const r = await post("/decision", {{set: setId, decision: b.dataset.decision, projection: $("projection").value,
+    const r = await post("/decision", {{set: setId, decision, projection: $("projection").value,
       orientation: $("orientation").value, crop: $("crop").checked, fill: $("fill").checked, note: $("note").value}});
-    $("status").textContent = `${{r.decision}} (saved to reviews.json)`;
-  }} catch (e) {{ $("status").textContent = "save failed: " + e.message; }}
-}}));
+    $("status").textContent = r.decision;
+    $("status").className = "p-chip " + r.decision;
+    window.fuseshotToast?.(r.decision === "kept" ? "Kept" : "Discarded");
+  }} catch (e) {{ window.fuseshotToast?.("Not saved: " + e.message, true); }}
+}};
 $("projection").value = {default_projection_json};
 $("orientation").value = {default_orientation_json};
 show();
-</script></body></html>
+</script>
 """
 
 
@@ -1440,27 +1439,38 @@ class Review:
         record = json.loads((group_dir / "group.json").read_text(encoding="utf-8"))
         c = next((x for x in self.candidates() if x["set_id"] == set_id), {})
         check = self.groups().get(set_id, {})
-        last = self.last_decision(self.decisions(), set_id, "group")
-        decision = f"last decision: {last['decision']}" if last.get("decision") else "to review"
+        last = self.last_decision(self.decisions(), set_id, "group").get("decision")
         rejected = sum(bool(p.get("rejected")) for p in record["people"])
-        summary = (f"{len(record['people'])} people in {len(record['frames'])} frames, {record['swapped']} faces "
-                   f"swapped in, {rejected} kept from the base. {html.escape(c.get('camera', ''))}, "
-                   f"{html.escape((c.get('start_local') or '')[:16])}. {html.escape(check.get('reason', ''))}.")
-        if c.get("best_link") or c.get("first_link"):
-            summary += f" <a target='_blank' href='{html.escape(c.get('best_link') or c['first_link'])}'>Immich</a>"
-        summary += (f" <a target='_blank' href='{self.base}/groupfile/{set_id}/merged.jpg'>full size</a>"
-                    f" &middot; <a target='_blank' href='{self.base}/groupfile/{set_id}/overlay.jpg'>face sources</a>")
+        summary = html.escape(f"{len(record['people'])} people in {len(record['frames'])} frames, {record['swapped']} "
+                              f"faces swapped in, {rejected} kept from the base. {check.get('reason', '')}")
         waiting = self.remerge_task(set_id)
         queue = f"Re-merge {waiting[1].lower()} as task {waiting[0]}." if waiting else ""
         version = int((group_dir / "merged.jpg").stat().st_mtime)
-        return GROUP_PAGE.format(
-            base=self.base, base_script=base_script(self.base), set_id=html.escape(set_id),
-            set_json=json.dumps(set_id), record_json=json.dumps(record).replace("</", "<\\/"),
-            choices_json=json.dumps(self.group_choices(set_id)), version=version,
-            type_select=self.type_select(set_id, self.detected_type(set_id, c, self.actions()),
-                                         self.type_overrides()),
-            decision=html.escape(decision), summary=summary, queue=queue, base_frame=record["base_frame"] + 1,
-            details=html.escape(json.dumps({k: v for k, v in record.items() if k != "people"}, indent=1)))
+        base, sid = html.escape(self.base), html.escape(set_id)
+        stage = GROUP_STAGE.format(base=base, set_id=sid, version=version, base_frame=record["base_frame"] + 1)
+        script = GROUP_SCRIPT % {"set_json": json.dumps(set_id), "version": version,
+                                 "record_json": json.dumps(record).replace("</", "<\\/"),
+                                 "choices_json": json.dumps(self.group_choices(set_id))}
+        return editor_page("group", set_id, base, stage, top=self.editor_top(f"Group {sid}", c, "#groups"),
+                           panel=self.editor_panel(set_id, c, last, summary, "Merge record",
+                                                   {k: v for k, v in record.items() if k != "people"},
+                                                   GROUP_HELP.format(base=base, set_id=sid, queue=queue)),
+                           scripts=script)
+
+    def editor_top(self, title, c, tables, tools=""):
+        taken = (c.get("start_local") or "")[:16].replace("T", " ")
+        subtitle = " \u00b7 ".join(x for x in (taken, c.get("camera", "")) if x)
+        link = c.get("best_link") or c.get("first_link")
+        immich = (f"<a class='icon-btn' target='_blank' rel='noopener' href='{html.escape(link)}' "
+                  "title='Open in Immich' data-icon='openInNew'></a>") if link else ""
+        return {"title": title, "subtitle": html.escape(subtitle), "immich": immich, "tables": tables, "tools": tools}
+
+    def editor_panel(self, set_id, c, last, summary, details_label, details, sections=""):
+        return {"decision": html.escape(last or "to review"), "decision_class": html.escape(last or "none"),
+                "summary": summary, "sections": sections, "details_label": details_label,
+                "type_select": self.type_select(set_id, self.detected_type(set_id, c, self.actions()),
+                                                self.type_overrides()),
+                "details": html.escape(json.dumps(details, indent=1))}
 
     def splat_plan(self):
         path = self.work_dir / "splat_plan.json"
@@ -1550,30 +1560,26 @@ class Review:
         sfm, trained = self.splat_records(set_id)
         c = next((x for x in self.candidates() if x["set_id"] == set_id), {})
         scene = out / "scene.splat"
-        last = self.last_decision(self.decisions(), set_id, "splat")
-        decision = f"last decision: {last['decision']}" if last.get("decision") else "to review"
-        summary = html.escape(f"{c.get('camera', '')}, {(c.get('start_local') or '')[:16]}. ")
-        summary += html.escape(sfm.get("reason", "no SfM yet")) + "."
+        last = self.last_decision(self.decisions(), set_id, "splat").get("decision")
+        summary = html.escape(sfm.get("reason", "no SfM yet")) + "."
         if trained.get("steps"):
             summary += html.escape(f" {trained['steps']} training steps in {trained['train_seconds'] / 60:.0f} min, "
                                    f"{trained['web_gaussians']:,} splats, {trained['splat_mb']} MB.")
-        if c.get("best_link") or c.get("first_link"):
-            summary += f" <a target='_blank' href='{html.escape(c.get('best_link') or c['first_link'])}'>Immich</a>"
         version = int(scene.stat().st_mtime) if scene.exists() else 0
         url = f"{self.base}/splatfile/{set_id}/scene.splat?v={version}" if scene.exists() else None
         vendor = self.base + "/vendor/"
         import_map = json.dumps({"imports": {
             "three": vendor + "three/three.module.js", "three/addons/": vendor + "three/addons/",
-            "spark": vendor + "spark/spark.module.min.js"}})
+            "spark": vendor + "spark/spark.module.min.js"}}).replace("</", "<\\/")
+        base, sid = html.escape(self.base), html.escape(set_id)
+        stage = SPLAT_STAGE.format(loading="loading..." if url else "not trained yet")
+        script = SPLAT_SCRIPT % {"view_json": json.dumps(sfm.get("view") or {}), "url_json": json.dumps(url)}
         details = {"sfm": {k: v for k, v in sfm.items() if k != "models"}, "training": trained}
-        return SPLAT_PAGE.format(
-            base=self.base, base_script=base_script(self.base), set_id=html.escape(set_id),
-            set_id_json=json.dumps(set_id), import_map=import_map.replace("</", "<\\/"),
-            type_select=self.type_select(set_id, self.detected_type(set_id, c, self.actions()), self.type_overrides()),
-            decision=html.escape(decision), summary=summary, version=version,
-            loading="loading..." if url else "not trained yet",
-            view_json=json.dumps(sfm.get("view") or {}), url_json=json.dumps(url),
-            details=html.escape(json.dumps(details, indent=1)))
+        return editor_page("splat", set_id, base, stage,
+                           top=self.editor_top(f"Splat {sid}", c, "#splats", SPLAT_TOOLS),
+                           panel=self.editor_panel(set_id, c, last, summary, "SfM and training", details,
+                                                   SPLAT_HELP.format(base=base, set_id=sid, version=version)),
+                           extra_head=f'<script type="importmap">{import_map}</script>\n', scripts=script)
 
     def candidates_table(self, query):
         candidates = self.candidates()
@@ -2237,7 +2243,7 @@ class Review:
             projection, _, orientation = rendered[0].partition("-")
             orientation = orientation or "level"
         last = self.last_decision(self.decisions(), set_id, "stitch")
-        decision = f"last decision: {last['decision']}" if last.get("decision") else "to review"
+        decision = last.get("decision") or "to review"
         option = lambda values: "".join(f"<option>{v}</option>" for v in values)
         c = next((x for x in self.candidates() if x["set_id"] == set_id), {})
         model = layout.get("model", {})
@@ -2255,8 +2261,13 @@ class Review:
             verified += f" <a href='{self.base}/action/{set_id}'>see the loop</a>"
         elif actions.get(set_id, {}).get("burst"):
             verified += f" <span class='dim'>{html.escape(actions[set_id]['reason'])}</span>"
+        static_version = max(int((WEB_DIR / name).stat().st_mtime) for name in WEB_FILES)
+        last = last.get("decision")
+        script = EDITOR_SCRIPT % {"base": self.base, "static_version": static_version,
+                                  "set_json": json.dumps(set_id), "kind": "stitch"}
         return PAGE.format(
-            base=self.base,
+            base=self.base, static_version=static_version, decision_class=html.escape(last or "none"),
+            top=EDITOR_TOP.format(base=self.base, **self.editor_top(f"Panorama {html.escape(set_id)}", c, "")),
             base_script=base_script(self.base),
             versions_json=json.dumps(self.versions(set_id)),
             fills_json=json.dumps(self.fills(set_id)),
@@ -2269,7 +2280,7 @@ class Review:
             default_orientation_json=json.dumps(orientation),
             decision=html.escape(decision),
             layout=html.escape(json.dumps(summary, indent=1)),
-        )
+        ) + script + "</body></html>\n"
 
 
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
