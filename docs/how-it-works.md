@@ -579,6 +579,24 @@ memory for each model is written to `work/enhance/results/vram.json`.
 Each result gets a difference score, 1 − SSIM on grey copies at most 1024 px long. Results
 under 0.02 look the same as the original and are not shown.
 
+### Optional model packs
+
+Two models are not part of Fuseshot and are never fetched on their own. Settings (and
+the first-run setup) lists them under Optional models with an Install button each. The
+button shows the licence in plain words with a link to the full text; only after Agree is
+the file downloaded into the models folder and checked against its SHA-256, and the
+agreement is saved beside it as `<pack>.agreed.json`.
+
+| Pack | Model | Licence | Used for |
+|---|---|---|---|
+| Face repair | CodeFormer | S-Lab License 1.0 (non-commercial) | redrawing faces after Face looks wrong |
+| Colourising | DDColor (ModelScope weights) | Apache-2.0 | black-and-white scans, with `colourise = true` |
+
+Both load through `spandrel_extra_arches`, which has to be added to the Python that runs
+the GPU jobs (`fill_python` under `[jobs]`); Settings says how when it is missing. Steps
+from a pack that is not installed are left out of the chain. Face repair finds faces with
+YuNet, redraws each one at 512 px and blends it back with a soft round edge.
+
 ### Comparing
 
 Compare restored photos (from the candidates page) shows each result beside its original
@@ -586,6 +604,7 @@ with the sides chosen at random, biggest expected gain first. Keep A (1), Keep B
 looks wrong (F). The answers go to `work/enhance/decisions.jsonl`, one line each, in the
 record shape Choice uses (`type`, `id`, `item`, `direction`, `value`, `label`, `note`, `ts`,
 `file`, plus `enhanced_side`); the latest line for a photo wins. Face looks wrong keeps the
-original. Keeping the enhanced photo never changes the original: with uploads on it is
+original; with Face repair installed it also queues the result again with the face pass at
+the end, and the new result comes back to Compare when it is done. Keeping the enhanced photo never changes the original: with uploads on it is
 added to Immich as a new asset and stacked with the original, on top; with uploads off it is
 copied to `work/enhance/kept/`.

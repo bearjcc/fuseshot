@@ -12,6 +12,8 @@
   SCUNet, NAFNet, Real-ESRGAN through spandrel), resumably and in tiles, and the
   review page compares each result blind against its original. Kept results are
   stacked with the original in Immich when uploads are on.
+- Optional model packs in Settings: Face repair (CodeFormer) and Colourising
+  (DDColor), each downloaded only after its licence is agreed to.
 - A setup page the first time the review page opens with nothing set up, and
   Settings in the sidebar after that: Immich address and key (with a connection
   test), photo folders (with a folder browser), the output folder, and which
