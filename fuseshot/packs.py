@@ -67,8 +67,14 @@ def status():
         found[name] = {**{k: spec[k] for k in ("title", "button", "what", "licence", "plain", "link")},
                        "size_mb": round(model["size"] / 1e6), "installed": installed(name),
                        "installing": name in _installing, "error": _installing.get(name) or None,
-                       "needs": None if has_extra else jobs.extra_hint("fill", EXTRA_MODULE)}
+                       "needs": None if has_extra else needs_hint()}
     return found
+
+
+def needs_hint():
+    python = jobs.python_for("fill")
+    python = f'"{python}"' if " " in str(python) else python
+    return f"{python} -m pip install {EXTRA_MODULE}"
 
 
 def install(pack, agree):
