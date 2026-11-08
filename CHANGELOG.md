@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- The panorama, group and splat editors now use the same layout as the loop
+  editor: a full-height stage, the Keep and Discard buttons with K and D, and
+  the details, type and note in the Info panel (I).
+- Fixed the panorama editor stopping on load before the crop setting was read.
 - `fuseshot moving` finds sets whose subject moves (people, animals, vehicles)
   and sends them to loops instead of splats. Sets can also be marked by hand.
 - `fuseshot enhance-scan` ranks photos that restoration could help (blur,
