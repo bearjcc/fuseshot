@@ -298,6 +298,16 @@ def cmd_enhance_apply(args):
         LOG.info(f"  {r['id']}  {' > '.join(r['chain'])}  difference {r['difference']}")
 
 
+def cmd_moving(args):
+    from . import moving
+
+    out = args.candidates.with_name("moving.json")
+    if args.mark or args.unmark:
+        moving.mark(out, args.mark or args.unmark, moving=bool(args.mark))
+        return
+    moving.scan(args.candidates, args.cache, out, set_ids=args.sets)
+
+
 def cmd_group(args):
     from . import group
     from .action import load_sets
@@ -519,6 +529,8 @@ def cmd_run(args):
                     step("batch", "--chunk", str(number))
                     bar.update(len(chunk))
     if not args.no_loops:
+        if args.dry_run or importlib.util.find_spec("mediapipe"):
+            step("moving")
         step("action", "--scan")
         step("action")
         step("action", "--motion")
@@ -822,6 +834,14 @@ def main(argv=None):
     p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     p.add_argument("--work", type=Path)
     p.set_defaults(func=cmd_enhance_apply)
+
+    p = sub.add_parser("moving", help="find sets whose subject moves, so they become loops instead of splats")
+    p.add_argument("sets", nargs="*", help="only look at these set ids")
+    p.add_argument("--mark", nargs="+", metavar="SET", help="mark sets as moving by hand")
+    p.add_argument("--unmark", nargs="+", metavar="SET", help="take a hand mark off")
+    p.add_argument("--candidates", type=Path)
+    p.add_argument("--cache", type=Path)
+    p.set_defaults(func=cmd_moving)
 
     p = sub.add_parser("group", help="find group photo sets and merge the best face of each person")
     p.add_argument("sets", nargs="*", help="set ids to merge (or re-merge after picking faces by hand)")

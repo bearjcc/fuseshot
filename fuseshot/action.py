@@ -42,6 +42,7 @@ import numpy as np
 
 from . import composite, config, log, retry
 from .files import write_atomic
+from .moving import moving_sets
 from .immich import ImmichError
 from .progress import Progress
 
@@ -558,13 +559,16 @@ def write_gif(frames, path, delay):
 
 def build(immich, scan_file, cache_dir, work_dir, candidates_file, keys=None,
           chunk=None, chunk_size=20, stop_file=None, log=LOG.info):
-    """Make loops for action sets from a scan, skipping ones already made and group photos,
-    which become best-shot merges instead."""
+    """Make loops for action sets from a scan and for sets with a moving subject (all their
+    frames), skipping ones already made and group photos, which become best-shot merges instead."""
     found = json.loads(Path(scan_file).read_text(encoding="utf-8"))
     by_id = {c["set_id"]: c for c in load_sets(candidates_file)}
     checks = {**found["sets"], **found["jobs"]}
     groups_file = Path(scan_file).with_name("groups.json")
     groups = json.loads(groups_file.read_text(encoding="utf-8"))["sets"] if groups_file.exists() else {}
+    for set_id in moving_sets(Path(scan_file).with_name("moving.json")):
+        if set_id in by_id and not checks.get(set_id, {}).get("action"):
+            checks[set_id] = {"set_id": set_id, "action": True, "moving_subject": True}
     todo = sorted(k for k, v in checks.items()
                   if v["action"] and not groups.get(v["set_id"], {}).get("group"))
     if keys:

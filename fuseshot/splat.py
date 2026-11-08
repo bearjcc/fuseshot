@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import formats, limits, log, rig, tools
+from .moving import moving_sets
 from .files import write_atomic
 from .group import is_group
 
@@ -108,6 +109,7 @@ def make_plan(candidates_file, cache_dir, min_parallax=4, types_file=None, work_
     candidates = json.loads(Path(candidates_file).read_text(encoding="utf-8"))["candidates"]
     verified = read_json(Path(candidates_file).with_name("verified.json"), {})
     groups_file = Path(candidates_file).with_name("groups.json")
+    moving = moving_sets(Path(candidates_file).with_name("moving.json"))
     rows = []
     for c in candidates:
         kind = set_kind(c)
@@ -119,7 +121,7 @@ def make_plan(candidates_file, cache_dir, min_parallax=4, types_file=None, work_
         ids = asset_ids(c)
         usable = len(ids) - len(junk)
         parallax = kinds.get("parallax", 0)
-        moving = sum(kinds.get(k, 0) for k in ("parallax", "planar", "rotation", "zoom")) or 1
+        turning = sum(kinds.get(k, 0) for k in ("parallax", "planar", "rotation", "zoom")) or 1
         joined, _, steps = (v.get("sequential_overlap") or "0/1").partition("/")
         seq = int(joined) / max(1, int(steps or 1))
         reasons = []
@@ -127,9 +129,11 @@ def make_plan(candidates_file, cache_dir, min_parallax=4, types_file=None, work_
             reasons.append(f"only {usable} usable frames")
         if kind != "object scan" and parallax < min_parallax:
             reasons.append(f"{parallax} parallax pairs")
+        if c["set_id"] in moving:
+            reasons.append("the subject moves (made into a loop instead)")
         sharp = thumb_sharpness(cache_dir, [a for i, a in enumerate(ids, 1) if i not in junk])
         sharp_factor = 1.0 if sharp is None else min(1.0, sharp / 150.0) ** 0.5
-        score = min(usable, 60) * seq * (0.3 + parallax / moving) * sharp_factor
+        score = min(usable, 60) * seq * (0.3 + parallax / turning) * sharp_factor
         rows.append({
             "set_id": c["set_id"], "kind": kind, "frames": len(ids), "usable": usable,
             "junk_frames": sorted(junk), "parallax_pairs": parallax, "sequential_overlap": round(seq, 2),

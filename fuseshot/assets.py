@@ -44,6 +44,13 @@ MODELS = {
         "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
         "size": 3758596, "licence": "Apache-2.0", "for": "group",
     },
+    "efficientdet-lite2": {
+        "file": "efficientdet_lite2.tflite",
+        "url": "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite2/float32/1/"
+               "efficientdet_lite2.tflite",
+        "sha256": "ad2abbf2b4e10585e15176fd7b5ef03c28dda959ae26fc142549fdd1814db91d",
+        "size": 23096891, "licence": "Apache-2.0", "for": "group",
+    },
     "big-lama": {
         "file": "big-lama.pt",
         "url": "https://github.com/Sanster/models/releases/download/add_big_lama/big-lama.pt",
