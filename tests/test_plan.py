@@ -45,7 +45,7 @@ def test_discards_are_read_again_before_each_set(tmp_path, monkeypatch):
     monkeypatch.setattr(tools, "require", lambda name: None)
     ran = []
 
-    def run_job(immich, job, work_dir, db_file):
+    def run_job(immich, job, work_dir, db_file, old=None):
         ran.append(job["key"])
         if job["key"] == "P1":  # discarded on the page while P1 was stitching
             decide(work, "P2", "found")

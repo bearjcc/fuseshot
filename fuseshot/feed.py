@@ -11,8 +11,8 @@ import time
 from collections import deque
 from pathlib import Path
 
-from . import log
-from .batch import DONE, left_out, load_record
+from . import log, retry
+from .batch import DONE, job_params, left_out, load_record
 
 LOG = log.get(__name__)
 WINDOW = 2
@@ -43,6 +43,8 @@ def batch_args(options, key, plan_file, work, candidates):
 
 def finished(work, job):
     record = load_record(work, job["key"])
+    if record and record.get("status") == "failed":
+        return not retry.should_retry(record, retry.code_version("batch", "stitch"), job_params(job))
     return bool(record and record.get("status") in DONE)
 
 

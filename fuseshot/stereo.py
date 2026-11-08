@@ -22,7 +22,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import action, assets, group, log
+from . import action, assets, group, log, retry
 from .files import write_atomic
 
 LOG = log.get(__name__)
@@ -198,7 +198,9 @@ def build(db_path, library, cache_dir, actions_dir, log=LOG.info):
     made = failed = 0
     for asset_id, _, path, candidate in found:
         out_dir = Path(actions_dir) / key(asset_id)
-        if (out_dir / "action.json").exists() or (out_dir / "failed.json").exists():
+        params, code = {"name": candidate.get("name")}, retry.code_version("stereo", "action")
+        old = retry.read(out_dir / "failed.json")
+        if (out_dir / "action.json").exists() or (old and not retry.should_retry(old, code, params)):
             continue
         try:
             if path:
@@ -216,7 +218,9 @@ def build(db_path, library, cache_dir, actions_dir, log=LOG.info):
         except Exception as err:
             failed += 1
             out_dir.mkdir(parents=True, exist_ok=True)
-            write_atomic(out_dir / "failed.json", json.dumps({"error": str(err)}))
+            write_atomic(out_dir / "failed.json", json.dumps(retry.record(err, code, params, old)))
             log(f"{key(asset_id)}: {err}")
+            continue
+        (out_dir / "failed.json").unlink(missing_ok=True)
     log(f"{len(found)} stereo photos, {made} wigglegrams made, {failed} failed")
     return made

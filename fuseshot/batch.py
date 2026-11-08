@@ -24,7 +24,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from . import lens, limits, log, tools
+from . import lens, limits, log, retry, tools
 from .fetch import fetch_set
 from .files import write_atomic
 from .review import discarded
@@ -392,7 +392,11 @@ def straighten_chunk(plan_file, chunk, work, sets=None, recheck=False):
     LOG.info(f"chunk done in {(time.time() - t0) / 60:.1f} min")
 
 
-def run_job(immich, job, work, db_file):
+def job_params(job):
+    return {k: job.get(k) for k in ("type", "frames", "stitch_plan")}
+
+
+def run_job(immich, job, work, db_file, old=None):
     set_dir = Path(work) / job["key"]
     record = {"key": job["key"], "set_id": job["set_id"], "type": job["type"], "frames": len(job["frames"]),
               "started": datetime.now().isoformat(timespec="seconds"), "seconds": {}}
@@ -427,7 +431,8 @@ def run_job(immich, job, work, db_file):
     except (StitchError, OSError, ValueError, KeyError, RuntimeError) as err:
         full = isinstance(err, OutOfSpace) or (isinstance(err, OSError) and err.errno == errno.ENOSPC)
         record["status"] = "no space" if full else "failed"  # "no space" is tried again next run
-        record["error"] = str(err)[:400]
+        record.update(retry.record(err, retry.code_version("batch", "stitch"), job_params(job),
+                                   old if old and old.get("status") == "failed" else None))
         record["trace"] = traceback.format_exc(limit=3)[-800:]
         shutil.rmtree(set_dir / "render_tmp", ignore_errors=True)
     record["seconds"]["total"] = round(time.time() - t0, 1)
@@ -461,11 +466,13 @@ def run_chunk(immich, plan_file, chunk, work, db_file, retry_failed=False, max_m
             earlier["discarded on the review page"] += 1
             continue
         old = load_record(work, key)
-        if old and old.get("status") in DONE and not (retry_failed and old["status"] == "failed"):
+        again = old and old.get("status") == "failed" and (
+            retry_failed or retry.should_retry(old, retry.code_version("batch", "stitch"), job_params(job)))
+        if old and old.get("status") in DONE and not again:
             earlier[f"already {old['status']}"] += 1
             continue
         LOG.info(f"[{n}/{len(keys)}] {key}: {job['type']}, {len(job['frames'])} frames")
-        record = run_job(immich, job, work, db_file)
+        record = run_job(immich, job, work, db_file, old=old)
         note = record.get("error") or f"{record.get('model')} {record.get('error_px')} px, {record.get('projection')}"
         LOG.info(f"  {record['status']} in {record['seconds']['total']:.0f}s ({note})")
         if record["status"] == "no space":

@@ -40,7 +40,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from . import composite, config, log
+from . import composite, config, log, retry
 from .files import write_atomic
 from .immich import ImmichError
 from .progress import Progress
@@ -581,6 +581,10 @@ def build(immich, scan_file, cache_dir, work_dir, candidates_file, keys=None,
             continue
         c = by_id[checks[key]["set_id"]]
         run = checks[key].get("run") or list(range(len(c["asset_ids"])))
+        params, code = {"run": run, "frames": len(c["asset_ids"])}, retry.code_version("action", "motion")
+        old = retry.read(out_dir / "failed.json")
+        if old and not retry.should_retry(old, code, params):
+            continue
         try:
             animate(immich, cache_dir, [c["asset_ids"][i] for i in run], out_dir,
                     gap_s=c.get("median_gap_s") or 0.5, log=log)
@@ -588,6 +592,8 @@ def build(immich, scan_file, cache_dir, work_dir, candidates_file, keys=None,
         except Exception as err:
             failed += 1
             out_dir.mkdir(parents=True, exist_ok=True)
-            write_atomic(out_dir / "failed.json", json.dumps({"error": str(err)}))
+            write_atomic(out_dir / "failed.json", json.dumps(retry.record(err, code, params, old)))
             log(f"{key}: {err}")
+            continue
+        (out_dir / "failed.json").unlink(missing_ok=True)
     log(f"made {made}, failed {failed}, of {len(todo)}")
