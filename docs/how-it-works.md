@@ -516,6 +516,15 @@ rendered from one viewpoint with a wide lens. Not built yet.
 COLMAP 3.12 or newer and Brush come from their GitHub releases; `fuseshot doctor` says
 whether they were found.
 
+## Failures
+
+A set that fails to stitch, or a loop or wigglegram that fails, is saved as failed along
+with a fingerprint of the code that ran and the parameters it ran with. Later runs leave it
+alone until one of those changes (a new version of Fuseshot, or a different frame count or
+stitch plan), and then try it again, at most 3 times in all. Failures in the sidebar lists
+them with their errors; Retry asks for one more try on the next run and starts the count
+again. `fuseshot batch --retry-failed` still retries every failed set.
+
 ## Enhance candidates
 
 `fuseshot enhance-scan` looks for photos that restoration could help. It is off until

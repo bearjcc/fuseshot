@@ -2099,6 +2099,62 @@ class Review:
             + (f"<table id='enhance'><tr><th></th><th>Gain</th><th>Photo</th><th>Why</th><th>Suggested steps</th></tr>"
                f"{rows}</table>" if rows else empty))
 
+    def failures(self):
+        """Everything that failed and is kept as failed: stitches, loops and wigglegrams."""
+        from . import retry
+
+        found = []
+        for path in sorted(self.work_dir.glob("*/batch.json")):
+            record = retry.read(path)
+            if record and record.get("status") == "failed":
+                found.append({"kind": "stitch", "key": path.parent.name, "record": record})
+        for path in sorted((self.work_dir / "actions").glob("*/failed.json")):
+            found.append({"kind": "action", "key": path.parent.name, "record": retry.read(path) or {}})
+        for f in found:
+            r = f["record"]
+            f.update(error=r.get("error") or "", attempts=r.get("attempts", 1), when=r.get("failed_at") or "",
+                     retry=bool(r.get("retry")), capped=r.get("attempts", 1) >= retry.MAX_ATTEMPTS)
+            del f["record"]
+        return found
+
+    def failure_path(self, kind, key):
+        if not SET_ID.match(key or ""):
+            raise KeyError(key)
+        path = (self.work_dir / key / "batch.json" if kind == "stitch" else
+                self.work_dir / "actions" / key / "failed.json" if kind == "action" else None)
+        if path is None or not path.exists():
+            raise KeyError(key)
+        return path
+
+    def retry_failure(self, body):
+        from . import retry
+
+        retry.request(self.failure_path(body.get("kind"), body.get("key")))
+        return {"retry": True, "key": body.get("key")}
+
+    def failures_page(self):
+        esc = html.escape
+        rows = "".join(
+            f"<tr><td>{esc(f['kind'])}</td><td>{esc(f['key'])}</td><td>{esc(f['error'])}</td>"
+            f"<td>{f['attempts']}{' (no more automatic tries)' if f['capped'] and not f['retry'] else ''}</td>"
+            f"<td class='dim'>{esc(f['when'][:16])}</td><td>"
+            + ("<span class='dim'>Tried again on the next run</span>" if f["retry"] else
+               f"<button class='retry' data-kind='{esc(f['kind'])}' data-key='{esc(f['key'])}'>Retry</button>")
+            + "</td></tr>" for f in self.failures())
+        script = ("<script>document.querySelectorAll('button.retry').forEach(b => b.onclick = async () => {"
+                  "const r = await fetch(BASE + '/retry', {method: 'POST', headers: {'Content-Type': "
+                  "'application/json'}, body: JSON.stringify({kind: b.dataset.kind, key: b.dataset.key})});"
+                  "b.replaceWith(Object.assign(document.createElement('span'), {className: 'dim', textContent: "
+                  "r.ok ? 'Tried again on the next run' : 'Could not mark it'}));});</script>")
+        return (
+            "<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
+            "<title>Failures</title>" + INDEX_STYLE + base_script(self.base) +
+            f"<h2>Failures</h2><p><a href='{self.base}/'>Back to the review grid</a></p>"
+            "<p class='dim'>A failure is tried again by itself when Fuseshot or its settings for it change, "
+            "up to 3 times. Retry asks for one more try on the next run.</p>"
+            + (f"<table><tr><th>Kind</th><th>Set</th><th>Error</th><th>Tries</th><th>When</th><th></th></tr>{rows}"
+               "</table>" if rows else "<p class='dim'>Nothing has failed.</p>") + script)
+
     def compare_page(self):
         from .enhance_review import PAGE
 
@@ -2413,6 +2469,8 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send_json(200, settings_web.output_status())
                 elif parts == ["enhance"]:
                     return self.send(200, review.enhance_page())
+                elif parts == ["failures"]:
+                    return self.send(200, review.failures_page())
                 elif parts == ["enhance", "compare"]:
                     return self.send(200, review.compare_page())
                 elif parts == ["api", "enhance", "queue"]:
@@ -2505,6 +2563,8 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send_json(200, review.edit(body))
                 if path == "/render":
                     return self.send_json(200, review.render(body))
+                if path == "/retry":
+                    return self.send_json(200, review.retry_failure(body))
                 if path == "/enhance/decide":
                     return self.send_json(200, review.enhance_decide(body))
                 if path == "/fill":
