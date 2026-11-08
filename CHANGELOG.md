@@ -8,6 +8,10 @@
   Blocking is measured on the original, size counts only under 1000 px, and
   black-and-white photos count only with the optional `colourise` output.
   Screenshots, memes, tables and other text images are left out.
+- `fuseshot enhance-run` restores the best candidates on the GPU (LaMa, FBCNN,
+  SCUNet, NAFNet, Real-ESRGAN through spandrel), resumably and in tiles, and the
+  review page compares each result blind against its original. Kept results are
+  stacked with the original in Immich when uploads are on.
 - A setup page the first time the review page opens with nothing set up, and
   Settings in the sidebar after that: Immich address and key (with a connection
   test), photo folders (with a folder browser), the output folder, and which

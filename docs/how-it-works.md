@@ -553,6 +553,39 @@ colourise on or off needs no new scan. The best 500 go to `work/enhance/candidat
 biggest gain first, with the suggested chain and the reasons. `--limit N` scores only the
 newest N photos.
 
-The review page lists them under Enhance candidates in the sidebar. No model runs yet, no face restorer is
-suggested (none has a permissive licence), and no no-reference quality model is used: the usual ones (pyiqa with MUSIQ or CLIP-IQA
+The review page lists them under Enhance candidates in the sidebar. No face restorer is
+suggested by default (none has a permissive licence), and no no-reference quality model is used: the usual ones (pyiqa with MUSIQ or CLIP-IQA
 weights) are under non-commercial licences.
+
+### Running the chains
+
+`fuseshot enhance-run --top 20` copies the originals of the best 20 candidates into
+`work/enhance/results/<id>/`, fetches the models it needs (checked against their SHA-256),
+and queues one GPU job, `fuseshot enhance-apply`. The job needs the `enhance` extra (torch
+and spandrel) and reads and writes only those folders. It runs one model at a time over
+every photo that needs it, in the order dust, JPEG, noise, blur, upscale, and saves each step
+as it finishes, so a stopped job carries on where it left off. Large photos are cut into
+512 px tiles with feathered overlaps. Upscaling stops at 3000 px on the long side. Peak GPU
+memory for each model is written to `work/enhance/results/vram.json`.
+
+| Step | Model | Licence |
+|---|---|---|
+| Dust and scratches | big-lama (TorchScript, as for AI fill), on the marks the scan found | Apache-2.0 |
+| JPEG blocking | FBCNN colour | Apache-2.0 |
+| Noise | SCUNet real PSNR | Apache-2.0 |
+| Softness | NAFNet GoPro width 64 | MIT |
+| Low resolution | Real-ESRGAN x4plus | BSD-3-Clause |
+
+Each result gets a difference score, 1 − SSIM on grey copies at most 1024 px long. Results
+under 0.02 look the same as the original and are not shown.
+
+### Comparing
+
+Compare restored photos (from the candidates page) shows each result beside its original
+with the sides chosen at random, biggest expected gain first. Keep A (1), Keep B (2) or Face
+looks wrong (F). The answers go to `work/enhance/decisions.jsonl`, one line each, in the
+record shape Choice uses (`type`, `id`, `item`, `direction`, `value`, `label`, `note`, `ts`,
+`file`, plus `enhanced_side`); the latest line for a photo wins. Face looks wrong keeps the
+original. Keeping the enhanced photo never changes the original: with uploads on it is
+added to Immich as a new asset and stacked with the original, on top; with uploads off it is
+copied to `work/enhance/kept/`.
