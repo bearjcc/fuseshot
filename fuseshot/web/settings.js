@@ -71,6 +71,10 @@ function page(s, first) {
         <div class="set-item"><div class="grow"><b>${esc(label)}</b><div class="set-status" id="sstat-${name}">Checking…</div></div>
           ${toggle("sout-" + name, s.outputs[name], label, ro)}</div>`).join("")}</div>
     </section>
+    <section class="set-card">
+      <div class="set-head">${ui.icon("download")}<div><h2>Optional models</h2><p>Not part of Fuseshot. Each has its own licence, shown before anything is downloaded</p></div></div>
+      <div id="spacks" class="set-list"><p class="set-note">Checking…</p></div>
+    </section>
     <div class="set-actions">
       <button class="pill primary" id="ssave" ${dis}>${ui.icon("check")}<span>Save</span></button>
       <button class="pill" id="sscan" ${first || ro ? "disabled" : ""}>${ui.icon("play")}<span>Start scan</span></button>
@@ -146,6 +150,45 @@ async function showOutputs() {
   } catch { /* the switches still work without it */ }
 }
 
+function packRow(name, p) {
+  const ro = !current.can_change;
+  const state = p.installed ? `<span class="ok">${ui.icon("checkCircle")}Installed</span>`
+    : `<span class="set-note">${p.size_mb.toLocaleString()} MB download</span>`;
+  return `<div class="set-item pack"><div class="grow"><b>${esc(p.title)}</b><div class="set-status">${esc(p.what)}</div>
+      <div class="set-status">${state}${p.needs ? `<code>${esc(p.needs)}</code>` : ""}</div>
+      <div class="licence" id="slic-${name}" hidden>
+        <p><b>${esc(p.licence)}.</b> ${esc(p.plain)} <a href="${esc(p.link)}" target="_blank" rel="noopener">Read the licence</a></p>
+        <label class="agree"><input type="checkbox" id="sagree-${name}"> I have read the licence and agree to it</label>
+        <div class="set-row"><button class="pill primary" id="sinstall-${name}" disabled>${ui.icon("download")}<span>Agree and install</span></button>
+          <button class="pill" id="scancel-${name}">Cancel</button><span class="set-note" id="spackout-${name}" aria-live="polite"></span></div>
+      </div></div>
+    ${p.installed ? "" : `<button class="pill" id="sopen-${name}" ${ro ? "disabled" : ""}>${esc(p.button)}</button>`}</div>`;
+}
+
+async function showPacks() {
+  let packs;
+  try { packs = await call("/api/settings/packs"); } catch { $("spacks").innerHTML = ""; return; }
+  $("spacks").innerHTML = Object.entries(packs).map(([name, p]) => packRow(name, p)).join("");
+  for (const [name, p] of Object.entries(packs)) {
+    if (p.installed) continue;
+    const box = $("slic-" + name), agree = $("sagree-" + name), go = $("sinstall-" + name);
+    $("sopen-" + name).onclick = () => { box.hidden = false; $("sopen-" + name).hidden = true; };
+    $("scancel-" + name).onclick = () => { box.hidden = true; agree.checked = false; go.disabled = true; $("sopen-" + name).hidden = false; };
+    agree.onchange = () => { go.disabled = !agree.checked; };
+    go.onclick = async () => {
+      go.disabled = true;
+      $("spackout-" + name).textContent = "Downloading and checking…";
+      try {
+        await call("/settings/install", { pack: name, agree: agree.checked });
+        showPacks();
+      } catch (err) {
+        go.disabled = false;
+        $("spackout-" + name).innerHTML = `<span class="missing">${ui.icon("alert")}${esc(err.message)}</span>`;
+      }
+    };
+  }
+}
+
 function wire(first) {
   $("simmich").onchange = e => { $("simmichfields").hidden = !e.target.checked; };
   $("stest").onclick = async () => {
@@ -209,4 +252,5 @@ export async function openSettings(options) {
   renderFolders();
   wire(first);
   showOutputs();
+  showPacks();
 }

@@ -75,6 +75,19 @@ MODELS = {
         "sha256": "329d3ab4077b8d6b7ff61de376e483714667960bf85be027bf4335cda701196f",
         "size": 271778961, "licence": "MIT", "for": "enhance",
     },
+    # Optional packs: downloaded only after the licence is agreed to in Settings (packs.py).
+    "codeformer": {
+        "file": "codeformer.pth",
+        "url": "https://github.com/sczhou/CodeFormer/releases/download/v0.1.0/codeformer.pth",
+        "sha256": "1009e537e0c2a07d4cabce6355f53cb66767cd4b4297ec7a4a64ca4b8a5684b7",
+        "size": 376637898, "licence": "S-Lab-1.0", "for": "face",
+    },
+    "ddcolor-modelscope": {
+        "file": "ddcolor_modelscope.pth",
+        "url": "https://huggingface.co/piddnad/DDColor-models/resolve/main/ddcolor_modelscope.pth",
+        "sha256": "17c460d7e55b32a598370621d77173be59e03c24b0823f06821db23a50c263ce",
+        "size": 911950059, "licence": "Apache-2.0", "for": "colourise",
+    },
 }
 
 NPM = "https://registry.npmjs.org"

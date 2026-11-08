@@ -2130,11 +2130,17 @@ class Review:
         if not (restore.results_dir(self.enhance_dir()) / str(asset_id) / "result.json").exists():
             raise KeyError(asset_id)
         row = enhance_review.record(self.enhance_dir(), asset_id, pick, side, file=f"{asset_id}/enhanced.jpg")
-        sent = None
+        sent, face_pass = None, False
         if pick == "enhanced":
             client = self.uploader.client if self.uploader else None
             sent = enhance_review.keep(self.enhance_dir(), asset_id, client)
-        return {"decision": row, "sent": sent}
+        elif pick == "face":
+            from . import packs
+
+            if packs.installed("face") and restore.add_face_pass(self.enhance_dir(), asset_id):
+                jobs.runner().submit("fill", "enhance", ["enhance-apply", "--work", self.work_dir], gpu=True)
+                face_pass = True
+        return {"decision": row, "sent": sent, "face_pass": face_pass}
 
     def enhance_file(self, name):
         from . import enhance
@@ -2289,6 +2295,10 @@ def make_handler(review, redirect_from=(), token=None):
                 return self.send_json(200, settings_web.test_immich(body))
             if path == "/settings/browse":
                 return self.send_json(200, settings_web.browse(body))
+            if path == "/settings/install":
+                from . import packs
+
+                return self.send_json(200, packs.install(body.get("pack"), body.get("agree")))
             if path == "/settings/scan":
                 return self.send_json(200, settings_web.start_scan(review.running() is not None))
             return self.send_json(404, {"error": "not found"})
@@ -2395,6 +2405,10 @@ def make_handler(review, redirect_from=(), token=None):
                 elif parts == ["api", "settings"]:
                     found = settings_web.state(review.cli_sources)
                     return self.send_json(200, {**found, "can_change": self.may_change_settings()})
+                elif parts == ["api", "settings", "packs"]:
+                    from . import packs
+
+                    return self.send_json(200, packs.status())
                 elif parts == ["api", "settings", "outputs"]:
                     return self.send_json(200, settings_web.output_status())
                 elif parts == ["enhance"]:

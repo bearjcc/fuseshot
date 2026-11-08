@@ -362,3 +362,10 @@ body.on-settings .usage:not(#running), body.on-settings .search { visibility: hi
 .ab-stage img { max-width: 100%; max-height: calc(100% - 28px); object-fit: contain; display: block; }
 .ab-stage figcaption { margin-top: 6px; color: #9ca3af; font-weight: 600; }
 @media (max-width: 699px) { .ab-stage { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
+
+/* optional model packs */
+.set-item.pack { align-items: flex-start; }
+.licence { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: #171717; font-size: 14px; }
+.licence p { margin: 0 0 10px; line-height: 1.45; }
+.licence a { color: #accbfa; }
+.licence .agree { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
