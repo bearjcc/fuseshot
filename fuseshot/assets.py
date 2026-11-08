@@ -50,6 +50,31 @@ MODELS = {
         "sha256": "344c77bbcb158f17dd143070d1e789f38a66c04202311ae3a258ef66667a9ea9",
         "size": 205669692, "licence": "Apache-2.0", "for": "fill",
     },
+    "realesrgan-x4plus": {
+        "file": "RealESRGAN_x4plus.pth",
+        "url": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+        "sha256": "4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1",
+        "size": 67040989, "licence": "BSD-3-Clause", "for": "enhance",
+    },
+    "scunet-real-psnr": {
+        "file": "scunet_color_real_psnr.pth",
+        "url": "https://github.com/cszn/KAIR/releases/download/v1.0/scunet_color_real_psnr.pth",
+        "sha256": "fa78899ba2caec9d235a900e91d96c689da71c42029230c2028b00f09f809c2e",
+        "size": 71982841, "licence": "Apache-2.0", "for": "enhance",
+    },
+    "fbcnn-color": {
+        "file": "fbcnn_color.pth",
+        "url": "https://github.com/jiaxi-jiang/FBCNN/releases/download/v1.0/fbcnn_color.pth",
+        "sha256": "8b0e4ef23d59cf7ac934a342cb31a17619e4fa4a0b3374a9d78c5174312387e8",
+        "size": 287755111, "licence": "Apache-2.0", "for": "enhance",
+    },
+    "nafnet-gopro-width64": {
+        # The authors publish this on Google Drive only; this mirror's file has the same SHA-256.
+        "file": "NAFNet-GoPro-width64.pth",
+        "url": "https://huggingface.co/nyanko7/nafnet-models/resolve/main/NAFNet-GoPro-width64.pth",
+        "sha256": "329d3ab4077b8d6b7ff61de376e483714667960bf85be027bf4335cda701196f",
+        "size": 271778961, "licence": "MIT", "for": "enhance",
+    },
 }
 
 NPM = "https://registry.npmjs.org"

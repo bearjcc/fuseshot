@@ -278,6 +278,26 @@ def cmd_enhance_scan(args):
         LOG.info(f"  {row['gain']:5.1f}  {row['id']}  {', '.join(row['reasons'])}")
 
 
+def cmd_enhance_run(args):
+    from . import assets, enhance, restore
+
+    out = args.work / "enhance"
+    chosen = restore.prepare(out, sources.library(args), enhance.load(out)["candidates"], top=args.top)
+    LOG.info(f"Enhance: {len(chosen)} originals ready in {restore.results_dir(out)}")
+    for step in sorted({s for c in chosen for s in c["chain"]} & set(restore.STEP_MODELS)):
+        assets.model(restore.STEP_MODELS[step])  # fetched and checked here, not on the GPU's time
+    task = jobs.runner().submit("fill", "enhance", ["enhance-apply", "--work", args.work], gpu=True)
+    LOG.info(f"Enhance: queued as task {task}")
+
+
+def cmd_enhance_apply(args):
+    from . import restore
+
+    done = restore.apply(args.work / "enhance", device=args.device, stop_file=args.work / "batch.stop")
+    for r in done:
+        LOG.info(f"  {r['id']}  {' > '.join(r['chain'])}  difference {r['difference']}")
+
+
 def cmd_group(args):
     from . import group
     from .action import load_sets
@@ -792,6 +812,16 @@ def main(argv=None):
     p.add_argument("--limit", type=int, help="only the newest this many photos (default: all)")
     p.add_argument("--work", type=Path)
     p.set_defaults(func=cmd_enhance_scan)
+
+    p = sub.add_parser("enhance-run", help="copy the best candidates' originals and queue their restoration")
+    p.add_argument("--top", type=int, default=20, help="how many candidates, biggest gain first (default: 20)")
+    p.add_argument("--work", type=Path)
+    p.set_defaults(func=cmd_enhance_run)
+
+    p = sub.add_parser("enhance-apply", help="run the queued restoration steps (needs torch and spandrel)")
+    p.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
+    p.add_argument("--work", type=Path)
+    p.set_defaults(func=cmd_enhance_apply)
 
     p = sub.add_parser("group", help="find group photo sets and merge the best face of each person")
     p.add_argument("sets", nargs="*", help="set ids to merge (or re-merge after picking faces by hand)")

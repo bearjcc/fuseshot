@@ -37,6 +37,7 @@ dependencies = [
 
 [project.optional-dependencies]
 fill = ["torch>=2.2"]
+enhance = ["torch>=2.2", "spandrel>=0.4.1"]
 group = ["mediapipe>=0.10.30"]
 jxl = ["pillow-jxl-plugin>=1.3"]
 
