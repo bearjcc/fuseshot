@@ -22,15 +22,15 @@ LOG = log.get(__name__)
 VERSION = 1
 MIN_SCORE = 0.3
 MIN_BOX = 0.02
-MIN_FRAMES = 0.5
+MIN_FRAMES = 0.4
 LIVING = {"person", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe"}
 VEHICLES = {"airplane", "bicycle", "motorcycle", "car", "bus", "train", "truck"}
 MOVING = LIVING | VEHICLES
 
 
 def rules():
-    return {"version": VERSION, "min_score": MIN_SCORE, "min_box": MIN_BOX,
-            "min_frames": MIN_FRAMES, "classes": sorted(MOVING)}
+    """What the stored per-shot counts depend on; MIN_FRAMES is applied when reading."""
+    return {"version": VERSION, "min_score": MIN_SCORE, "min_box": MIN_BOX, "classes": sorted(MOVING)}
 
 
 def detector():
@@ -70,7 +70,10 @@ def judge(per_frame):
     for names in per_frame:
         for name in names:
             counts[name] = counts.get(name, 0) + 1
-    shots = len(per_frame)
+    return verdict(counts, len(per_frame))
+
+
+def verdict(counts, shots):
     top = max(counts.items(), key=lambda kv: kv[1], default=(None, 0))
     moving = shots > 0 and top[1] >= MIN_FRAMES * shots
     return {"moving": moving, "subject": top[0] if moving else None, "shots": shots, "counts": counts}
@@ -96,8 +99,9 @@ def scan(candidates_file, cache_dir, out_file, set_ids=None, log=LOG.info):
         if set_ids and c["set_id"] not in set_ids:
             continue
         key = ids_key(c)
-        if old.get(c["set_id"], {}).get("ids") == key:
-            sets[c["set_id"]] = old[c["set_id"]]
+        known = old.get(c["set_id"], {})
+        if known.get("ids") == key:
+            sets[c["set_id"]] = dict(verdict(known["counts"], known["shots"]), ids=key)
             continue
         paths = [thumb_path(cache_dir, a) for a in c["asset_ids"]]
         sets[c["set_id"]] = dict(judge([frame_classes(detect, p) for p in paths if p.exists()]), ids=key)

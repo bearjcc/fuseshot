@@ -6,6 +6,7 @@ from fuseshot import moving
 def test_judge_needs_half_the_shots():
     assert moving.judge([{"bird"}, {"bird"}, set(), set()])["moving"]
     assert not moving.judge([{"bird"}, set(), set(), set()])["moving"]
+    assert moving.judge([{"person"}, {"person"}, set(), set(), set()])["moving"]
     assert moving.judge([{"person"}, {"person"}, {"person"}])["subject"] == "person"
     assert not moving.judge([])["moving"]
 
