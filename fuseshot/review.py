@@ -424,8 +424,9 @@ function draw() {
     for (const o of p.options) {
       const img = document.createElement("img");
       img.src = BASE + "/groupfile/" + SET + "/faces/" + p.id + "_" + o.frame + ".jpg?v=" + VERSION;
-      img.title = "frame #" + (o.frame + 1) + ": score " + o.score.toFixed(2) + ", eyes " + o.eyes.toFixed(2)
-        + ", turned " + Math.round(o.turn) + " deg, sharpness " + o.sharp.toFixed(2);
+      const n = v => v == null ? "?" : Number(v).toFixed(2);
+      img.title = "frame #" + (o.frame + 1) + ": score " + n(o.score) + ", eyes " + n(o.eyes)
+        + ", turned " + (o.turn == null ? "?" : Math.round(o.turn)) + " deg, sharpness " + n(o.sharp);
       img.className = o.frame === p.source_frame ? "chosen" : (o.frame === now ? "pending" : "");
       img.addEventListener("click", () => choose(p.id, o.frame));
       div.appendChild(img);
