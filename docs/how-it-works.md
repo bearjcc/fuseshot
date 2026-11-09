@@ -460,8 +460,9 @@ the composite; keeping the loop exports both. `composites = false` in
 A splat needs the scene to hold still. `fuseshot moving` runs an object detector
 (EfficientDet-Lite2, Apache-2.0, through MediaPipe) over each set's thumbnails.
 A person, animal or vehicle must cover at least 2% of the frame in at least 40% of
-the shots and must shift enough between neighbouring frames; presence alone is not
-enough (statues and static displays stay eligible). Boats are left out, since moored
+the shots and must move relative to the background between neighbouring frames
+(homography from verify matches or fresh ORB alignment on thumbnails). Uncertainty
+only records presence and leaves splats eligible. Boats are left out, since moored
 boats hold still. Marked sets are skipped by the splat plan and made into loops from
 all their frames. Insects and other subjects the detector does not know can be marked
 by hand with `fuseshot moving --mark SET` (and `--unmark`). Overrides from the
