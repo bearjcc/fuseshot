@@ -159,6 +159,7 @@ def test_only_one_scan_at_a_time(home, monkeypatch):
 
     monkeypatch.setattr(pipeline, "_proc", None)
     monkeypatch.setattr(pipeline.subprocess, "Popen", Alive)
+    monkeypatch.setattr(pipeline, "_watch_process", lambda proc: None)
     monkeypatch.setattr(settings_web, "needs_setup", lambda *a, **k: False)
     with pytest.raises(settings_web.SetupError):
         settings_web.start_scan(running=True)
