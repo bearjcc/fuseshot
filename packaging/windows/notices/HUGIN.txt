@@ -1,0 +1,9 @@
+Hugin panorama tools may be copied into this installer when the build machine supplies
+them. Hugin is GPL-licensed software, not part of the Fuseshot source tree.
+
+Upstream: https://hugin.sourceforge.io/
+Source and licence: as distributed by the Hugin project and your Hugin installer.
+
+Fuseshot invokes Hugin's command-line tools (nona, cpfind, enblend, and others) for
+stitching only. If you redistribute an installer that includes Hugin binaries, you
+must comply with the GPL (source offer, licence text, and attribution).
