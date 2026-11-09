@@ -1,8 +1,8 @@
 """Local review page for stitched previews, action loops, group merges and splats.
 
 Nothing here talks to Immich. Decisions are written to work/reviews.json,
-stitching model overrides to work/overrides.json and set type overrides to
-work/types.json.
+stitching model overrides to work/overrides.json, set type overrides to
+work/types.json, and moving-subject overrides to work/moving_overrides.json.
 
 Each set has a type that decides what is made from it: panoramas are stitched,
 object scans become Gaussian splats (see splat.py), action shots become
@@ -39,8 +39,11 @@ from . import assets, config, jobs, log, settings_web, stitch, tools
 from .events import Changes
 from .files import read_text, write_atomic
 from .found import Found
+from . import moving as moving_scan
 
 LOG = log.get(__name__)
+
+MOVING_SKIP = "the subject moves (made into a loop instead)"
 
 SET_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 FILE_NAME = re.compile(r"^[a-z-]+(_crop|_fill|_fillshow)?\.jpg$")
@@ -201,6 +204,11 @@ document.querySelectorAll("select[data-set]").forEach(s => s.addEventListener("c
 document.querySelectorAll("select[data-type-set]").forEach(s => s.addEventListener("change", async () => {
   const r = await fetch(BASE + "/type", {method: "POST", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({set: s.dataset.typeSet, type: s.value})});
+  s.style.outline = r.ok ? "2px solid #2e7d32" : "2px solid #b71c1c";
+}));
+document.querySelectorAll("select[data-moving-set]").forEach(s => s.addEventListener("change", async () => {
+  const r = await fetch(BASE + "/moving", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({set: s.dataset.movingSet, moving: s.value})});
   s.style.outline = r.ok ? "2px solid #2e7d32" : "2px solid #b71c1c";
 }));
 </script>"""
@@ -845,6 +853,44 @@ class Review:
         options = "".join(f"<option value='{t}'{' selected' if t == current else ''}>{html.escape(label(t))}</option>"
                           for t in ("auto",) + SET_TYPES)
         return f"<select data-type-set='{html.escape(set_id)}'>{options}</select>"
+
+    def moving_json_file(self):
+        return self.candidates_file.with_name("moving.json") if self.candidates_file else None
+
+    def moving_subject(self, set_id):
+        path = self.moving_json_file()
+        if not path:
+            return False
+        return set_id in moving_scan.moving_sets(path, self.work_dir)
+
+    def splat_skip_moving(self, row):
+        skip = row.get("skip") or ""
+        parts = [p.strip() for p in skip.split(";") if p.strip() and MOVING_SKIP not in p]
+        if self.moving_subject(row["set_id"]):
+            parts.append(MOVING_SKIP)
+        return "; ".join(parts)
+
+    def moving_select(self, set_id):
+        path = self.moving_json_file()
+        if not path:
+            return ""
+        choice = moving_scan.moving_choice(path, self.work_dir, set_id)
+        auto_label = "auto (treat as loop)" if choice == "auto-loop" else "auto (detector)"
+        current = {"loop": "loop", "splat": "splat"}.get(choice, "auto")
+        options = (("auto", auto_label), ("loop", "loop (force)"), ("splat", "splat (force still scene)"))
+        inner = "".join(
+            f"<option value='{v}'{' selected' if v == current else ''}>{html.escape(label)}</option>"
+            for v, label in options)
+        return f"<select data-moving-set='{html.escape(set_id)}'>{inner}</select>"
+
+    def set_moving(self, body):
+        set_id = body.get("set")
+        chosen = body.get("moving")
+        if not SET_ID.match(set_id or "") or chosen not in ("auto", "loop", "splat"):
+            raise ValueError("bad set or moving subject choice")
+        with self.lock:
+            moving_scan.write_override(self.work_dir, set_id, chosen)
+        return {"set": set_id, "moving": chosen}
 
     def loops(self):
         if not self.loops_dir.exists():
@@ -1521,10 +1567,11 @@ class Review:
         for row in plan["sets"]:
             set_id = row["set_id"]
             sfm, trained = self.splat_records(set_id)
-            if row.get("skip") and not sfm:
-                skipped.append(f"{html.escape(set_id)} ({html.escape(row['skip'])})")
+            skip = self.splat_skip_moving(row)
+            if skip and not sfm:
+                skipped.append(f"{html.escape(set_id)} ({html.escape(skip)})")
                 continue
-            state = self.splat_state(sfm, trained, row.get("skip"))
+            state = self.splat_state(sfm, trained, skip)
             name = html.escape(set_id)
             if trained.get("steps") and (self.splats_dir / set_id / "scene.splat").exists():
                 name = f"<a href='{self.base}/splat/{name}'>{name}</a>"
@@ -1543,6 +1590,7 @@ class Review:
                 f"<td>{html.escape(row.get('camera', ''))}</td><td>{row['usable']}</td><td>{state} "
                 f"<span class='dim'>{why}</span></td><td>{registered}</td>"
                 f"<td>{'' if error is None else f'{error:.2f}'}</td><td>{minutes}</td><td>{size}</td>"
+                f"<td>{self.moving_select(set_id)}</td>"
                 f"<td>{self.type_select(set_id, detected, types)}</td><td>{last}</td></tr>")
         extra = (f"<details><summary class='dim'>{len(skipped)} sets left out</summary><p class='dim'>"
                  + ", ".join(skipped) + "</p></details>") if skipped else ""
@@ -1551,9 +1599,10 @@ class Review:
             f"parallax. COLMAP poses each set; it goes on to training only if at least "
             f"{gate.get('min_registered_ratio', 0.6):.0%} of the frames (and {gate.get('min_registered_images', 8)} or "
             f"more) register with a mean reprojection error of {gate.get('max_mean_reprojection_error_px', 1.5)} px "
-            "or less.</p><table><tr><th>Set</th><th>Kind</th><th>Taken</th><th>Camera</th><th>Frames</th>"
-            "<th>State</th><th>Registered</th><th>Error (px)</th><th>Training</th><th>Size</th><th>Type</th>"
-            "<th>Decision</th></tr>" + "".join(rows) + "</table>" + extra
+            "or less. Moving-subject routing uses detector motion plus overrides here and in work/moving_overrides.json."
+            "</p><table><tr><th>Set</th><th>Kind</th><th>Taken</th><th>Camera</th><th>Frames</th>"
+            "<th>State</th><th>Registered</th><th>Error (px)</th><th>Training</th><th>Size</th><th>Subject</th>"
+            "<th>Type</th><th>Decision</th></tr>" + "".join(rows) + "</table>" + extra
         )
 
     def splat_page(self, set_id):
@@ -1962,8 +2011,12 @@ class Review:
             raise KeyError(kind)
         c = next((x for x in self.candidates() if x["set_id"] == key.split("-")[0]), {})
         types = self.type_overrides()
+        path = self.moving_json_file()
+        mchoice = moving_scan.moving_choice(path, self.work_dir, key.split("-")[0]) if path else "auto"
         detail = {"type_choice": types.get(key, {}).get("type", "auto"),
                   "detected": self.detected_type(key, c, self.actions()),
+                  "moving_choice": "loop" if mchoice == "auto-loop" else mchoice if mchoice in ("loop", "splat") else "auto",
+                  "moving_detected": mchoice == "auto-loop",
                   "verify": {k: c.get(k) for k in ("verified_type", "verified_confidence", "verify_reason",
                                                    "motion_model", "coverage_h", "coverage_v", "count")}}
         if kind != "stitch":
@@ -2571,6 +2624,8 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send_json(200, review.override(body))
                 if path == "/type":
                     return self.send_json(200, review.set_type(body))
+                if path == "/moving":
+                    return self.send_json(200, review.set_moving(body))
                 if path == "/edit":
                     return self.send_json(200, review.edit(body))
                 if path == "/render":

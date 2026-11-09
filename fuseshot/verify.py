@@ -599,7 +599,7 @@ def describe_subset(candidate, frames, positions, cp, rotations, sizes, rel, hfo
         if kind == TRANSLATION and gained < 0.35:
             kind = NOT_PANORAMA
             reason = "frames overlap almost completely, little extra coverage"
-        elif kind in (TRANSLATION, OBJECT_SCAN) and (candidate.get("people_share") or 0) >= 0.4:
+        elif kind == TRANSLATION and (candidate.get("people_share") or 0) >= 0.6 and gained < 0.5:
             kind = NOT_PANORAMA
             reason = "people are the subject and the camera follows them"
         elif kind in (TRANSLATION, OBJECT_SCAN) and len(landscape) > 1:
@@ -617,7 +617,7 @@ def describe_subset(candidate, frames, positions, cp, rotations, sizes, rel, hfo
     else:
         kind = MIXED
         reason = f"{rot} rotation and {trans} moving-camera pairs on the same subject"
-        if (candidate.get("people_share") or 0) >= 0.4:
+        if (candidate.get("people_share") or 0) >= 0.6 and degree < 4:
             kind = NOT_PANORAMA
             reason = "people are the subject and the camera follows them"
         cover_factor = min(1.0, 0.4 + 0.1 * positions)

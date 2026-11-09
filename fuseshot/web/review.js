@@ -731,7 +731,12 @@ function renderPanel(item, detail) {
     const v = viewer.view || { name: item.preview || "" };
     const [proj, orient = "level"] = (v.name || "").split("-");
     const busy = item.decision === "editing";
+    const movingLabels = { auto: detail.moving_detected ? "auto (detector says loop)" : "auto (detector)",
+      loop: "loop (force)", splat: "splat (force still scene)" };
+    const movingField = detail.moving_choice != null
+      ? `<label class="p-field"><span>Subject motion</span>${select("pmoving", ["auto", "loop", "splat"], detail.moving_choice, movingLabels)}</label>` : "";
     html += `<div class="p-section" id="pedit"><div class="p-label">${item.kind === "stitch" ? "Edit" : "Processing"}</div>
+      ${movingField}
       <label class="p-field"><span>Treat as</span>${select("ptype", ["auto", ...Object.keys(state.types)], detail.type_choice, typeLabels)}</label>
       ${item.kind === "stitch" ? `<label class="p-field"><span>Stitch model</span>${select("pmodel", state.models, detail.model_choice)}</label>
       <label class="p-field"><span>Projection</span>${select("pproj", state.projections, proj || state.projections[0])}</label>
@@ -772,11 +777,15 @@ function renderPanel(item, detail) {
         await post(path, { set: item.id, [field]: el.value });
         el.classList.add("saved");
         detail[field === "type" ? "type_choice" : "model_choice"] = el.value;
-        toast(field === "type" ? `${item.id} will be treated as ${el.value}` : `${item.id}: stitch model ${el.value} on the next run`);
+        const msg = field === "type" ? `${item.id} will be treated as ${el.value}`
+          : field === "moving" ? `${item.id}: subject motion ${el.value}`
+          : `${item.id}: stitch model ${el.value} on the next run`;
+        toast(msg);
       } catch (err) { el.classList.add("failed"); toast(err.message, { error: true }); }
     });
   };
   saveSelect("ptype", "/type", "type");
+  saveSelect("pmoving", "/moving", "moving");
   saveSelect("pmodel", "/override", "model");
   if ($("prerender")) $("prerender").onclick = () => startEdit(item, detail);
   if (item.kind === "stitch") {

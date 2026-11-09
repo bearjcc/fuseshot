@@ -109,7 +109,7 @@ def make_plan(candidates_file, cache_dir, min_parallax=4, types_file=None, work_
     candidates = json.loads(Path(candidates_file).read_text(encoding="utf-8"))["candidates"]
     verified = read_json(Path(candidates_file).with_name("verified.json"), {})
     groups_file = Path(candidates_file).with_name("groups.json")
-    moving = moving_sets(Path(candidates_file).with_name("moving.json"))
+    moving = moving_sets(Path(candidates_file).with_name("moving.json"), work_dir)
     rows = []
     for c in candidates:
         kind = set_kind(c)
