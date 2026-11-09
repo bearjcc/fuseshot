@@ -35,7 +35,13 @@ from pathlib import Path
 from . import config, log
 
 LOG = log.get(__name__)
-PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+def package_root():
+    from . import runtime
+
+    return runtime.package_root()
+
+
+PACKAGE_ROOT = package_root()
 
 
 def settings():
@@ -63,7 +69,7 @@ def python_for(kind):
 
 def child_env():
     env = dict(os.environ, PYTHONIOENCODING="utf-8", FUSESHOT_HOME=str(config.home()))
-    env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(PACKAGE_ROOT), env.get("PYTHONPATH")]))
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(package_root()), env.get("PYTHONPATH")]))
     return env
 
 

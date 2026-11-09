@@ -373,6 +373,10 @@ def cmd_review(args):
 
     from . import upload
 
+    if getattr(sys, "frozen", False):
+        from .desktop import prepare_review_args
+
+        prepare_review_args(args)
     found, output = sources.configured(args)
     upload_to = album = None
     if upload.enabled():
@@ -899,7 +903,10 @@ def main(argv=None):
     p.set_defaults(func=cmd_edit)
 
     if argv is None and getattr(sys, "frozen", False) and len(sys.argv) == 1:
-        argv = ["review", "--open"]  # double-clicked: show the review page
+        from .desktop import run_app
+
+        run_app()
+        return
     describe_options(sub.choices)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(line_buffering=True)  # keep printed results in step with the log

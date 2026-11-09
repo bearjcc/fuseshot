@@ -65,11 +65,18 @@ def _given(value, program):
 
 def find(name):
     """Full path of the tool's main program, or None."""
+    from . import runtime
+
     tool = TOOLS[name]
     program = tool["program"]
     for value in (os.environ.get(f"FUSESHOT_{name.upper()}"), config.section("tools").get(name)):
         if value:
             return _given(value, program)
+    if runtime.frozen():
+        for folder in runtime.packaged_tool_bins():
+            found = _program_in(folder, program)
+            if found:
+                return found
     tools_dir = config.path("tools")
     for pattern in tool["under_home"]:
         for folder in sorted(tools_dir.glob(pattern)) if tools_dir.is_dir() else ():

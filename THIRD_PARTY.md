@@ -35,7 +35,14 @@ when you install or first use Fuseshot.
 | pillow-jxl-plugin (extra `jxl`) | GPL-3.0 | JPEG XL photos |
 
 pillow-jxl-plugin is GPL-3.0, which can be combined with AGPL-3.0. It stays an optional extra
-and is not included in the Windows build or the Docker image.
+and is not included in the Windows desktop build scripts or the Docker image.
+
+## Windows desktop packaging (`packaging/windows/`)
+
+The test installer bundles CPython and the default Python dependencies listed above.
+It does **not** bundle torch, MediaPipe, COLMAP, Brush, viewer assets, or any model
+files. Optional Hugin binaries may be copied in at build time when the builder
+supplies them; see `packaging/windows/notices/HUGIN.txt` for GPL obligations.
 
 ## Downloaded on first use, checked against a pinned SHA-256
 

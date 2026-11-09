@@ -24,6 +24,7 @@ import hmac
 import html
 import json
 import os
+import sys
 import re
 import secrets
 import tempfile
@@ -2676,6 +2677,10 @@ def serve(work_dir, host="127.0.0.1", port=8765, candidates_file=None, base_path
                     "to keep the same one across restarts.")
     server = ThreadingHTTPServer((host, port), make_handler(review, redirect_from, token))
     server.daemon_threads = True
+    if getattr(sys, "frozen", False):
+        from .desktop import write_session
+
+        write_session(host, port, base_path, token)
     if not assets.viewer_ready():
         threading.Thread(target=fetch_viewer, daemon=True).start()
     shown = "localhost" if host in ("0.0.0.0", "::") else host
@@ -2692,4 +2697,8 @@ def serve(work_dir, host="127.0.0.1", port=8765, candidates_file=None, base_path
     except KeyboardInterrupt:
         pass
     finally:
+        if getattr(sys, "frozen", False):
+            from .desktop import clear_session
+
+            clear_session()
         server.server_close()
