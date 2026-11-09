@@ -566,7 +566,7 @@ def build(immich, scan_file, cache_dir, work_dir, candidates_file, keys=None,
     checks = {**found["sets"], **found["jobs"]}
     groups_file = Path(scan_file).with_name("groups.json")
     groups = json.loads(groups_file.read_text(encoding="utf-8"))["sets"] if groups_file.exists() else {}
-    for set_id in moving_sets(Path(scan_file).with_name("moving.json")):
+    for set_id in moving_sets(Path(scan_file).with_name("moving.json"), work_dir):
         if set_id in by_id and not checks.get(set_id, {}).get("action"):
             checks[set_id] = {"set_id": set_id, "action": True, "moving_subject": True}
     todo = sorted(k for k, v in checks.items()
