@@ -1924,13 +1924,23 @@ class Review:
 
     def running(self):
         """The stage a run is in now, from the progress.json it keeps up to date, or None."""
+        from . import pipeline
+
         try:
             state = json.loads(self.actions_file.with_name("progress.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return None
-        if not isinstance(state, dict) or state.get("finished") or time.time() - state.get("at", 0) > 300:
-            return None
-        return {k: state.get(k) for k in ("stage", "done", "total", "unit", "seconds_left")}
+            state = None
+        if isinstance(state, dict) and not state.get("finished") and time.time() - state.get("at", 0) <= 300:
+            return {k: state.get(k) for k in ("stage", "done", "total", "unit", "seconds_left")}
+        row = pipeline.status()
+        if row.get("active") and isinstance(row.get("progress"), dict):
+            prog = row["progress"]
+            if not prog.get("finished") and time.time() - prog.get("at", 0) <= 600:
+                return {k: prog.get(k) for k in ("stage", "done", "total", "unit", "seconds_left")}
+        if row.get("active"):
+            return {"stage": row.get("paused_at") or "scanning", "done": 0, "total": 0, "unit": "steps",
+                    "seconds_left": None}
+        return None
 
     def crop_rects(self, set_dir, versions):
         """The clean rectangle of each view, as shares of the uncropped panorama."""
@@ -2423,6 +2433,14 @@ def make_handler(review, redirect_from=(), token=None):
                 return self.send_json(200, packs.install(body.get("pack"), body.get("agree")))
             if path == "/settings/scan":
                 return self.send_json(200, settings_web.start_scan(review.running() is not None))
+            if path == "/settings/pipeline/pause":
+                from . import pipeline
+
+                return self.send_json(200, pipeline.pause())
+            if path == "/settings/pipeline/resume":
+                from . import pipeline
+
+                return self.send_json(200, pipeline.resume())
             return self.send_json(404, {"error": "not found"})
 
         def send(self, code, body, kind="text/html; charset=utf-8"):
@@ -2533,6 +2551,10 @@ def make_handler(review, redirect_from=(), token=None):
                     return self.send_json(200, packs.status())
                 elif parts == ["api", "settings", "outputs"]:
                     return self.send_json(200, settings_web.output_status())
+                elif parts == ["api", "pipeline"]:
+                    from . import pipeline
+
+                    return self.send_json(200, pipeline.status())
                 elif parts == ["enhance"]:
                     return self.send(200, review.enhance_page())
                 elif parts == ["failures"]:

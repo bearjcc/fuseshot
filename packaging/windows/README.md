@@ -60,7 +60,8 @@ Redistributing Hugin inside the installer must comply with the GPL. Ship
 2. Start **Fuseshot** from the Start menu. The local review page opens in your
    browser on `http://127.0.0.1` (port chosen automatically if 8765 is busy).
 3. First-run setup is the **Settings** page: Immich and/or folder sources, output
-   folder, and which result types to make. Optional models (faces, fill, splats)
+   folder, and which result types to make. Use **Start** on the Scan card to run
+   sync through stitching without a terminal. Optional models (faces, fill, splats)
    are downloaded later from settings with licence text and checksum verification.
 
 Data lives under `%LOCALAPPDATA%\fuseshot` by default and is kept across upgrades.
@@ -81,6 +82,8 @@ Uninstall removes the program files; data is left unless you delete the folder.
 Run through this on a VM or PC **without** Python or Hugin on PATH:
 
 - Install from `Fuseshot-Setup-test.exe` (paths with spaces and non-ASCII username).
+  Silent install: quote `/DIR=` when the path contains spaces, for example
+  `Fuseshot-Setup-test.exe /DIR="{localappdata}\Programs\My Fuseshot" /SILENT`.
 - First-run settings: folder source only, then one small `fuseshot run --year …` from doctor.
 - Start menu twice: second launch should focus the existing browser tab, not a second server.
 - Upgrade install over an older test build: `fuseshot.toml` in `%LOCALAPPDATA%\fuseshot` unchanged.

@@ -324,6 +324,8 @@ body.editor { overflow: hidden; }
   padding: 4px 8px; border-radius: 6px; }
 .set-status .hint { font-size: 12px; }
 .set-note { color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.log-tail { font-family: var(--mono, ui-monospace, monospace); font-size: 11px; max-height: 12rem; overflow: auto;
+  background: var(--bg2, #1a1a1a); padding: 8px; border-radius: 6px; white-space: pre-wrap; }
 .ok, .missing { display: inline-flex; align-items: center; gap: 6px; }
 .ok { color: var(--yes); } .missing, .set-note.error { color: var(--no); }
 .ok svg.i, .missing svg.i, .set-note svg.i, .banner svg.i { width: 18px; height: 18px; }

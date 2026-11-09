@@ -10,12 +10,32 @@ $Root = (Resolve-Path (Join-Path $Here "..\..")).Path
 $Dist = Join-Path $Here "dist"
 $Stage = Join-Path $Here "stage"
 
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Command
+    )
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Command
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+            throw "Native command failed with exit code $LASTEXITCODE"
+        }
+    }
+    finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 Push-Location $Root
 try {
-    & $Python -m pip install --quiet pyinstaller
+    Invoke-NativeCommand { & $Python -m pip install --quiet pyinstaller }
     if (Test-Path $Dist) { Remove-Item -Recurse -Force $Dist }
-    & $Python -m PyInstaller --noconfirm --distpath $Dist --workpath (Join-Path $Here "build\pyi") `
-        (Join-Path $Here "fuseshot.spec")
+    Invoke-NativeCommand {
+        & $Python -m PyInstaller --noconfirm --distpath $Dist --workpath (Join-Path $Here "build\pyi") `
+            (Join-Path $Here "fuseshot.spec")
+    }
 
     $App = Join-Path $Dist "Fuseshot"
     if (-not (Test-Path (Join-Path $App "Fuseshot.exe"))) {
@@ -34,7 +54,7 @@ try {
     $Iscc = Get-Command iscc.exe -ErrorAction SilentlyContinue
     if ($Iscc) {
         Push-Location $Here
-        & iscc.exe (Join-Path $Here "installer.iss")
+        Invoke-NativeCommand { & iscc.exe (Join-Path $Here "installer.iss") }
         Pop-Location
     } else {
         Write-Warning "Inno Setup (iscc.exe) not on PATH; skipped installer. Raw app is in $App"

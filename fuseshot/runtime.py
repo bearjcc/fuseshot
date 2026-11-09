@@ -43,6 +43,18 @@ def packaged_tool_bins():
     return found
 
 
+def fuseshot_argv(args, home=None):
+    """Command line to run fuseshot subcommands (dev install or frozen exe)."""
+    from . import config
+
+    home = str(home or config.home())
+    prefix = ["--home", home]
+    tail = [str(a) for a in args]
+    if frozen():
+        return [sys.executable, *prefix, *tail]
+    return [sys.executable, "-u", "-m", "fuseshot", *prefix, *tail]
+
+
 def seed_environment():
     """Tell child processes and finders where the packaged tree lives."""
     if not frozen():

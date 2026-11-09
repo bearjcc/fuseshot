@@ -8,8 +8,6 @@ never into fuseshot.toml, and the page is only ever told whether one is saved.
 import os
 import shutil
 import string
-import subprocess
-import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -28,8 +26,9 @@ OUTPUTS = {
     "groups": {"label": "Best-face group shots", "module": ("group", "mediapipe")},
     "wigglegrams": {"label": "Wigglegrams from stereo photos", "ffmpeg": True},
     "composites": {"label": "Action composites"},
-    "enhance": {"label": "Enhance candidates (photos restoration could help)"},
-    "colourise": {"label": "Suggest colourising black-and-white scans (optional model pack)"},
+    "enhance": {"label": "Enhance candidates (photos restoration could help)", "module": ("fill", "torch")},
+    "colourise": {"label": "Suggest colourising black-and-white scans (optional model pack)",
+                  "module": ("fill", "torch"), "pack": "colourise"},
 }
 
 
@@ -90,6 +89,7 @@ def state(cli_sources=False):
 def output_status():
     """Installed or missing, for each kind of result, with how to add what is missing.
     Slower than state(): it may start the group Python to look for mediapipe."""
+    from . import packs, runtime
     from .doctor import _python_has
 
     found = {}
@@ -106,9 +106,21 @@ def output_status():
             if not _python_has(jobs.python_for(extra), module):
                 missing.append(module)
                 hints.append(jobs.extra_hint(extra, module))
+        pack = needs.get("pack")
+        if pack:
+            row = packs.status().get(pack, {})
+            if not row.get("installed"):
+                missing.append(f"{pack} model pack")
+                hints.append(f"Install the {pack} pack in Settings (licence shown first)")
+            elif row.get("needs"):
+                missing.append("spandrel_extra_arches")
+                hints.append(row["needs"])
         note = None
         if needs.get("ffmpeg") and not shutil.which("ffmpeg"):
             note = "Without ffmpeg there is no MP4, only WebP and GIF: https://ffmpeg.org/download.html"
+        if runtime.frozen() and missing and name in ("splats", "groups", "enhance", "colourise"):
+            note = (note + " " if note else "") + (
+                "The desktop app does not bundle this stack; downloading weights alone is not enough.")
         found[name] = {"ready": not missing, "missing": missing, "hints": hints, "note": note}
     return found
 
@@ -260,20 +272,10 @@ def save(body, cli_sources=False):
     return state(cli_sources)
 
 
-_scan = None
-
-
 def start_scan(running=False):
-    """fuseshot run in the background, logging to output/run.log. running: whether the
-    review page already sees a run going (from its progress.json)."""
-    global _scan
-    if running or (_scan is not None and _scan.poll() is None):
+    """Start the background scan pipeline. `running` is kept for older callers."""
+    from . import pipeline
+
+    if running or pipeline.active():
         raise SetupError("a scan is already running")
-    log = config.home() / "output" / "run.log"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-    with open(log, "ab") as out:
-        _scan = subprocess.Popen([sys.executable, "-m", "fuseshot", "--home", str(config.home()), "run"],
-                         stdout=out, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=jobs.child_env(),
-                         creationflags=flags, start_new_session=os.name != "nt")
-    return {"started": True, "log": str(log)}
+    return pipeline.start()
