@@ -148,7 +148,6 @@ def judge(per_frame, poses=None):
     shots = len(per_frame)
     top_class = max(counts.items(), key=lambda kv: kv[1], default=(None, 0))[0]
     poses = poses or []
-    boxes = lead_box(per_frame, top_class) if top_class else []
     reliable, independent_frac = independent_motion_stats(per_frame, top_class, poses) if top_class else (0, 0.0)
     return verdict(counts, shots, per_frame, top_class, reliable, independent_frac)
 
