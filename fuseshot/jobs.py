@@ -74,7 +74,11 @@ def child_env():
 
 
 def argv(kind, args):
-    return [str(python_for(kind)), "-u", "-m", "fuseshot", *[str(a) for a in args]]
+    if kind in ("fill", "group"):
+        return [str(python_for(kind)), "-u", "-m", "fuseshot", *[str(a) for a in args]]
+    from .runtime import fuseshot_argv
+
+    return fuseshot_argv(args)
 
 
 def shell_line(kind, args):

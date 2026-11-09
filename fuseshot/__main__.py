@@ -505,7 +505,11 @@ def cmd_run(args):
         from . import progress
 
         progress.STATE = config.home() / "output" / "progress.json"
+    from . import pipeline
+
     synced = step("sync")
+    if not args.dry_run and pipeline.checkpoint("after sync"):
+        return
     from . import explain
 
     if not args.dry_run and not cache.connect(synced.db).execute("SELECT COUNT(*) FROM assets").fetchone()[0]:
@@ -513,13 +517,19 @@ def cmd_run(args):
         return
     dates = [f"--{k}={v}" for k, v in date_range(args).items() if v]
     detected = step("detect", "--keep-verified", *dates)
+    if not args.dry_run and pipeline.checkpoint("after detect"):
+        return
     step("verify")
+    if not args.dry_run and pipeline.checkpoint("after verify"):
+        return
     if not args.no_stitch:
         planned = step("batch", "--plan", "--min-confidence", str(args.min_confidence))
         plan = planned.plan_file
         chunks = [] if args.dry_run else json.loads(plan.read_text(encoding="utf-8"))["chunks"]
         if not args.dry_run and not chunks:
             explain.report(explain.nothing_to_stitch(detected.out / "candidates.json", plan, detected.min_shots))
+        if not args.dry_run and pipeline.checkpoint("after stitch plan"):
+            return
         if args.dry_run:
             LOG.info("== batch --chunk N, for each chunk of the plan")
         from .progress import Progress
@@ -530,8 +540,12 @@ def cmd_run(args):
                 stitch_queued(planned, bar)
             else:
                 for number, chunk in enumerate(chunks):
+                    if pipeline.checkpoint(f"before stitch chunk {number}"):
+                        return
                     step("batch", "--chunk", str(number))
                     bar.update(len(chunk))
+                    if pipeline.checkpoint(f"after stitch chunk {number}"):
+                        return
     if not args.no_loops:
         if args.dry_run or importlib.util.find_spec("mediapipe"):
             step("moving")
@@ -549,6 +563,12 @@ def cmd_run(args):
 
             LOG.info("Group photos skipped: " + extra_hint("group", "mediapipe"))
     if not args.dry_run:
+        if pipeline.checkpoint("before finish"):
+            return
+        from .pipeline import clear_stop, write_state
+
+        clear_stop()
+        write_state(state="done", error=None)
         LOG.info("Done. Open the review page with `fuseshot review --open` to look through the results.")
 
 

@@ -75,9 +75,18 @@ function page(s, first) {
       <div class="set-head">${ui.icon("download")}<div><h2>Optional models</h2><p>Not part of Fuseshot. Each has its own licence, shown before anything is downloaded</p></div></div>
       <div id="spacks" class="set-list"><p class="set-note">Checking…</p></div>
     </section>
+    <section class="set-card" id="spipeline">
+      <div class="set-head">${ui.icon("play")}<div><h2>Scan</h2><p>Reads your sources, finds sets, stitches previews. Progress is saved so you can pause and resume.</p></div></div>
+      <div class="set-row" id="spipebtns">
+        <button class="pill primary" id="sscan" ${first || ro ? "disabled" : ""}>${ui.icon("play")}<span>Start</span></button>
+        <button class="pill" id="spause" hidden ${ro ? "disabled" : ""}>${ui.icon("pause")}<span>Pause</span></button>
+        <button class="pill" id="sresume" hidden ${ro ? "disabled" : ""}>${ui.icon("play")}<span>Resume</span></button>
+      </div>
+      <p class="set-note" id="spipestate" aria-live="polite">Not running.</p>
+      <pre class="log-tail" id="spipelog" hidden></pre>
+    </section>
     <div class="set-actions">
       <button class="pill primary" id="ssave" ${dis}>${ui.icon("check")}<span>Save</span></button>
-      <button class="pill" id="sscan" ${first || ro ? "disabled" : ""}>${ui.icon("play")}<span>Start scan</span></button>
       <span class="set-note" id="ssaved" aria-live="polite"></span>
     </div>
   </div>`;
@@ -190,6 +199,7 @@ async function showPacks() {
 }
 
 function wire(first) {
+  const ro = !current.can_change;
   $("simmich").onchange = e => { $("simmichfields").hidden = !e.target.checked; };
   $("stest").onclick = async () => {
     const out = $("stestout");
@@ -220,17 +230,67 @@ function wire(first) {
       $("ssave").disabled = false;
     }
   };
-  $("sscan").onclick = async () => {
-    $("sscan").disabled = true;
+  const pipeStart = $("sscan");
+  const pipePause = $("spause");
+  const pipeResume = $("sresume");
+  const pipeState = $("spipestate");
+  const pipeLog = $("spipelog");
+
+  function showPipeline(p) {
+    if (!p) return;
+    const run = p.active;
+    pipeStart.hidden = run || p.can_resume;
+    pipePause.hidden = !p.can_pause;
+    pipeResume.hidden = !p.can_resume;
+    pipeStart.disabled = ro || p.needs_setup || run;
+    let msg = "Not running.";
+    if (p.state === "paused") msg = `Paused${p.paused_at ? ` after ${p.paused_at}` : ""}.`;
+    else if (run) msg = p.progress?.stage ? `Running: ${p.progress.stage}` : "Running…";
+    else if (p.state === "done") msg = "Last scan finished. Start again when you have new photos.";
+    else if (p.state === "failed") msg = `Last scan failed: ${p.error || "see log"}`;
+    pipeState.textContent = msg;
+    if (p.log_tail) {
+      pipeLog.hidden = false;
+      pipeLog.textContent = p.log_tail;
+    }
+  }
+
+  async function refreshPipeline() {
+    try { showPipeline(await call("/api/pipeline")); } catch { /* optional */ }
+  }
+
+  pipeStart.onclick = async () => {
+    pipeStart.disabled = true;
     try {
       await call("/settings/scan", {});
       ui.toast("Scan started: new sets show up in review as they are found");
-      location.href = ui.base + "/";
+      await refreshPipeline();
     } catch (err) {
-      $("sscan").disabled = false;
       ui.toast(`Could not start the scan: ${err.message}`, { error: true });
+    } finally {
+      pipeStart.disabled = false;
     }
   };
+  pipePause.onclick = async () => {
+    try {
+      await call("/settings/pipeline/pause", {});
+      ui.toast("Pausing after the current step…");
+      await refreshPipeline();
+    } catch (err) {
+      ui.toast(err.message, { error: true });
+    }
+  };
+  pipeResume.onclick = async () => {
+    try {
+      await call("/settings/pipeline/resume", {});
+      ui.toast("Scan resumed");
+      await refreshPipeline();
+    } catch (err) {
+      ui.toast(err.message, { error: true });
+    }
+  };
+  refreshPipeline();
+  setInterval(refreshPipeline, 5000);
 }
 
 // Show the settings in place of the grid. first: nothing is set up yet.

@@ -1,6 +1,16 @@
-"""PyInstaller entry: start the review UI (double-click or Start menu)."""
+"""PyInstaller entry: review UI with no args, or fuseshot subcommands with argv."""
 
-from fuseshot.desktop import run_app
+import sys
+
+from fuseshot import runtime
 
 if __name__ == "__main__":
-    run_app()
+    runtime.seed_environment()
+    if len(sys.argv) > 1:
+        from fuseshot.__main__ import main
+
+        main()
+    else:
+        from fuseshot.desktop import run_app
+
+        run_app()
