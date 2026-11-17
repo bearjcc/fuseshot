@@ -12,3 +12,7 @@ def test_installer_smoke_uses_native_wrapper_and_pid_check():
     assert "/NOCLOSEAPPLICATIONS" in text
     assert "/TASKS=" in text
     assert "session.pid" in text and "proc.Id" in text
+    assert "fixtures\\panorama_sample" in text or "fixtures/panorama_sample" in text
+    assert "--source" in text and "folder:" in text
+    assert "--output-folder" in text
+    assert "candidates.json" in text

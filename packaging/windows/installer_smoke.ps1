@@ -48,9 +48,23 @@ try {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "[Windows] Run sample scan via frozen CLI"
+$PhotoLib = Join-Path $TempRoot "photos"
+$Fixtures = Join-Path $PSScriptRoot "fixtures\panorama_sample"
+if (-not (Test-Path $Fixtures)) {
+    throw "missing packaged smoke photos at $Fixtures"
+}
+New-Item -ItemType Directory -Force -Path $PhotoLib | Out-Null
+Copy-Item -Path (Join-Path $Fixtures "*") -Destination $PhotoLib -Force
+$OutDir = Join-Path $TempRoot "output"
+New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+
+Write-Host "[Windows] Run sample scan via frozen CLI (folder source, no Immich)"
 Invoke-NativeCommand {
-    & $Exe --home $DataHome run --no-loops --no-groups --no-stitch 2>&1 | Out-Host
+    & $Exe --home $DataHome --source "folder:$PhotoLib" --output-folder $OutDir run --no-loops --no-groups --no-stitch 2>&1 | Out-Host
+}
+$candidates = Join-Path $OutDir "candidates.json"
+if (-not (Test-Path $candidates)) {
+    throw "run did not write $candidates"
 }
 
 Write-Host "installer smoke finished (manual: confirm uninstall keeps $DataHome)"

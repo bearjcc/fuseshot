@@ -15,9 +15,15 @@ function Ensure-PyInstaller {
     param([string]$Python)
     $importCheck = @'
 import importlib.util
-raise SystemExit(0 if importlib.util.find_spec("PyInstaller") else 1)
+raise SystemExit(0 if importlib.util.find_spec('PyInstaller') else 1)
 '@
-    & $Python -c $importCheck
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Python -c $importCheck 2>&1 | Out-Null
+    } finally {
+        $ErrorActionPreference = $prev
+    }
     if ($LASTEXITCODE -eq 0) {
         return
     }

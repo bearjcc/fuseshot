@@ -14,4 +14,7 @@ def test_build_ensures_pyinstaller_without_bare_pip_first():
     assert "uv pip install" in text
     assert "ensurepip" in text
     assert "importlib.util.find_spec" in text
+    assert "find_spec('PyInstaller')" in text
+    assert "ErrorActionPreference = 'Continue'" in text
+    assert "& $Python -c $importCheck" in text
     assert "lib.ps1" in text

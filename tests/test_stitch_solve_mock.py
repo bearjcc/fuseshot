@@ -17,12 +17,17 @@ def test_solve_keeps_auto_when_error_high(tmp_path):
         steps = []
 
         def __call__(self, tool, *args, cwd=None, check=True):
-            cwd = Path(cwd)
+            work = Path(cwd or set_dir)
             if tool == "checkpto":
                 return "Mean error : 99.0 pixels"
             if "-o" in args:
                 dest = Path(args[args.index("-o") + 1])
+                if not dest.is_absolute():
+                    dest = work / dest
                 src = Path(args[-1])
+                if not src.is_absolute():
+                    src = work / src
+                dest.parent.mkdir(parents=True, exist_ok=True)
                 if src.exists():
                     shutil.copy(src, dest)
                 else:
