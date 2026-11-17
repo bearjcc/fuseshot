@@ -224,7 +224,11 @@ def scan(candidates_file, cache_dir, out_file, set_ids=None, log=LOG.info):
 
     before = read(out_file)
     old = before["sets"] if before.get("rules") == rules() else {}
-    detect = detector().detect
+    try:
+        detect = detector().detect
+    except (RuntimeError, OSError) as err:
+        log(f"Moving-subject scan skipped: {err}")
+        return before if before else {"rules": rules(), "sets": {}, "marked": [], "unmarked": []}
     sets = {}
     for c in load_sets(candidates_file):
         if set_ids and c["set_id"] not in set_ids:
