@@ -76,11 +76,15 @@ def test_immich_timeout(home, monkeypatch):
 
 def test_port_already_in_use(home, monkeypatch):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
-    picked = desktop.pick_port("127.0.0.1", port)
-    assert picked != port or picked > port
-    sock.close()
+    sock.listen(5)
+    try:
+        picked = desktop.pick_port("127.0.0.1", port)
+        assert picked != port
+    finally:
+        sock.close()
 
 
 def test_second_desktop_instance_opens_existing(home, monkeypatch):
