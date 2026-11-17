@@ -5,6 +5,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "lib.ps1")
+
 if (-not (Test-Path $Installer)) {
     Write-Error "Build the installer first: .\packaging\windows\build.ps1"
 }
@@ -16,7 +18,10 @@ $DataHome = Join-Path $TempRoot "data"
 New-Item -ItemType Directory -Force -Path $DataHome | Out-Null
 
 Write-Host "[Windows] Silent install to $AppDir"
-& $Installer "/DIR=`"$AppDir`"" /SILENT | Out-Null
+Invoke-NativeCommand {
+    & $Installer "/DIR=`"$AppDir`"" /SILENT /NOCLOSEAPPLICATIONS /TASKS= |
+        Out-Null
+}
 $Exe = Join-Path $AppDir "Fuseshot.exe"
 if (-not (Test-Path $Exe)) {
     throw "Fuseshot.exe not found after install"
@@ -27,15 +32,25 @@ Write-Host "[Windows] Launch frozen review (loopback)"
 $proc = Start-Process -FilePath $Exe -PassThru
 Start-Sleep -Seconds 4
 try {
-    $session = Get-Content (Join-Path $DataHome "desktop-session.json") -Raw | ConvertFrom-Json
-    $url = "http://127.0.0.1:$($session.port)/settings"
+    $sessionPath = Join-Path $DataHome "desktop-session.json"
+    if (-not (Test-Path $sessionPath)) {
+        throw "desktop-session.json was not written"
+    }
+    $session = Get-Content $sessionPath -Raw | ConvertFrom-Json
+    if ($session.pid -ne $proc.Id) {
+        throw "desktop-session.json pid $($session.pid) is not the installed process $($proc.Id)"
+    }
+    $port = [int]$session.port
+    $url = "http://127.0.0.1:$port/settings"
     Invoke-WebRequest -Uri $url -UseBasicParsing | Out-Null
-    Write-Host "Settings page reachable at $url"
+    Write-Host "Settings page reachable at $url (pid $($proc.Id))"
 } finally {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "[Windows] Run sample scan via frozen CLI"
-& $Exe --home $DataHome run --no-loops --no-groups --no-stitch 2>&1 | Out-Host
+Invoke-NativeCommand {
+    & $Exe --home $DataHome run --no-loops --no-groups --no-stitch 2>&1 | Out-Host
+}
 
 Write-Host "installer smoke finished (manual: confirm uninstall keeps $DataHome)"

@@ -93,16 +93,29 @@ def clear_session():
         pass
 
 
+def _port_listening(host, port):
+    try:
+        with socket.create_connection((host, port), timeout=0.25):
+            return True
+    except OSError:
+        return False
+
+
 def pick_port(host, preferred=DEFAULT_PORT):
     for port in [preferred, *range(preferred + 1, preferred + 24)]:
+        if _port_listening(host, port):
+            continue
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
             try:
                 sock.bind((host, port))
                 return port
             except OSError:
                 continue
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         sock.bind((host, 0))
         return sock.getsockname()[1]
 
