@@ -4,14 +4,24 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from fuseshot import tools
 from fuseshot.__main__ import main
 
 SET = "F20240309T140000"  # folder sets are named after the moment they start
 
 
+LIGHT = ("--no-loops", "--no-groups")  # headless-friendly scan without MediaPipe GPU libs
+
+
 def run(home, photos, *args):
-    main(["--home", str(home), "--source", f"folder:{photos[0].parent}", *args])
+    parts = list(args)
+    if parts and parts[0] == "run":
+        for flag in LIGHT:
+            if flag not in parts:
+                parts.insert(1, flag)
+    main(["--home", str(home), "--source", f"folder:{photos[0].parent}", *parts])
 
 
 def test_turning_camera_is_found_and_checked(home, photos):

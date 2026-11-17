@@ -5,6 +5,10 @@ time the tests run and kept outside the repository; without a network the
 tests that need them are skipped."""
 
 import hashlib
+
+import pytest
+
+pytestmark = pytest.mark.slow
 import json
 import os
 import shutil
