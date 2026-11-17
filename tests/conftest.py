@@ -8,6 +8,18 @@ from PIL import Image
 
 from fuseshot import config
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _guard_repo_root_pto_files():
+    before = {p.name for p in REPO_ROOT.glob("*.pto")}
+    yield
+    after = {p.name for p in REPO_ROOT.glob("*.pto")}
+    added = sorted(after - before)
+    if added:
+        pytest.fail(f"tests left PTO files in repo root: {added}")
+
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
