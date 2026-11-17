@@ -2,11 +2,9 @@
 
 import json
 
-import pytest
 
 from fuseshot.__main__ import main
 
-from conftest import write_frames
 
 LIGHT = ("run", "--no-stitch", "--no-loops", "--no-groups")
 

@@ -1,13 +1,8 @@
 """Failure-injection: pause/resume, bad files, Immich errors, ports, packs."""
 
 import errno
-import json
 import socket
 import subprocess
-import threading
-import time
-import urllib.error
-import urllib.request
 
 import pytest
 
