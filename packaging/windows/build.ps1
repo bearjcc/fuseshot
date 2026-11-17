@@ -9,28 +9,30 @@ $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = (Resolve-Path (Join-Path $Here "..\..")).Path
 $Dist = Join-Path $Here "dist"
 $Stage = Join-Path $Here "stage"
+. (Join-Path $Here "lib.ps1")
 
-function Invoke-NativeCommand {
-    param(
-        [Parameter(Mandatory = $true)]
-        [scriptblock]$Command
-    )
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        & $Command
-        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-            throw "Native command failed with exit code $LASTEXITCODE"
-        }
+function Ensure-PyInstaller {
+    param([string]$Python)
+    $importCheck = @'
+import importlib.util
+raise SystemExit(0 if importlib.util.find_spec("PyInstaller") else 1)
+'@
+    & $Python -c $importCheck
+    if ($LASTEXITCODE -eq 0) {
+        return
     }
-    finally {
-        $ErrorActionPreference = $prev
+    $uv = Get-Command uv -ErrorAction SilentlyContinue
+    if ($uv) {
+        Invoke-NativeCommand { uv pip install pyinstaller }
+        return
     }
+    Invoke-NativeCommand { & $Python -m ensurepip --upgrade }
+    Invoke-NativeCommand { & $Python -m pip install --quiet pyinstaller }
 }
 
 Push-Location $Root
 try {
-    Invoke-NativeCommand { & $Python -m pip install --quiet pyinstaller }
+    Ensure-PyInstaller -Python $Python
     if (Test-Path $Dist) { Remove-Item -Recurse -Force $Dist }
     Invoke-NativeCommand {
         & $Python -m PyInstaller --noconfirm --distpath $Dist --workpath (Join-Path $Here "build\pyi") `

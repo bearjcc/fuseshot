@@ -67,7 +67,10 @@ def test_pause_requires_active(home):
 def test_build_ps1_native_helper():
     from pathlib import Path
 
-    text = Path(__file__).resolve().parents[1].joinpath("packaging", "windows", "build.ps1").read_text(encoding="utf-8")
-    assert "Invoke-NativeCommand" in text
-    assert "ErrorActionPreference = 'Continue'" in text
-    assert "LASTEXITCODE" in text
+    root = Path(__file__).resolve().parents[1].joinpath("packaging", "windows")
+    text = root.joinpath("build.ps1").read_text(encoding="utf-8")
+    lib = root.joinpath("lib.ps1").read_text(encoding="utf-8")
+    assert "lib.ps1" in text
+    assert "Invoke-NativeCommand" in lib
+    assert "ErrorActionPreference = 'Continue'" in lib
+    assert "LASTEXITCODE" in lib
