@@ -10,6 +10,8 @@ import time
 import urllib.request
 
 import pytest
+
+pytestmark = [pytest.mark.slow, pytest.mark.smoke]
 from conftest import write_frames
 from PIL import Image
 

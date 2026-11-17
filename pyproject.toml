@@ -57,10 +57,15 @@ include = ["fuseshot", "tests", "LICENSE", "THIRD_PARTY.md", "README.md", "CHANG
            "fuseshot.example.toml", "sites.example.json"]
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-cov>=6", "hypothesis>=6.100", "ruff>=0.6"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: full CLI runs, Hugin stitching, or browser review tests",
+    "smoke: contributor smoke (python -m tests.smoke)",
+    "windows_only: needs a real Windows build or installer",
+]
 
 [tool.ruff]
 line-length = 120
