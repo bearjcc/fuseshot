@@ -10,7 +10,8 @@ Fuseshot targets a 1.0 desktop release. Tests use **synthetic scenes** from `tes
 | `pytest` | Full suite including Hugin stitch, browser review, and CC0 raw tests |
 | `python tests/smoke.py` | Contributor smoke: CLI scan + review HTTP on a tiny library |
 | `pytest -m smoke` | Smoke tests via pytest (includes browser review when Playwright is installed) |
-| `pytest --cov=fuseshot --cov-report=term-missing -m "not slow"` | Coverage on the fast suite |
+| `pytest --cov=fuseshot --cov-report=term-missing -m "not slow"` | Line coverage on the fast suite |
+| `pytest --cov=fuseshot --cov-branch --cov-report=term-missing -m "not slow"` | Line and branch coverage on the fast suite |
 
 Optional dev deps: `uv sync` (uses `dependency-groups.dev`: pytest, pytest-cov, hypothesis, ruff).
 
@@ -22,43 +23,75 @@ Windows installer smoke (real Windows only): `packaging/windows/installer_smoke.
 - **`smoke`**: End-to-end checks suitable after packaging changes.
 - **`windows_only`**: Reserved for tests that must run on a built installer (documented in release checklist).
 
-## Coverage map (line coverage, fast suite)
+## Coverage (fast suite, Nov 2026 pass)
 
-Measured with `pytest --cov=fuseshot -m "not slow"` on Linux (Nov 2026). Overall **~55%** line coverage before this pass; the same metric after adding failure-injection, fuzz, pipeline, and moving-headless tests is **~55%** (more lines exercised in `moving`, `pipeline`, `settings_web`; large stitch/group/splat modules unchanged).
+Measured on Linux with `pytest -m "not slow"`.
 
-### By module (approximate % covered, fast suite)
+### Overall
 
-| Module | % | Risk if untested |
-| --- | ---: | --- |
-| `stitch.py` | 16 | Panorama align, Hugin CLI, crop, export sizes |
-| `parts.py` | 11 | PTO parsing, lens lines |
-| `group.py` | 17 | Best-face merges, MediaPipe |
-| `splat.py` | 41 | COLMAP/Brush orchestration |
-| `fill.py` | 0 | AI border fill (torch) |
-| `edit.py` | 0 | Re-stitch jobs from review |
-| `watch.py` | 0 | Filesystem watch helper |
-| `doctor.py` | 19 | First-run capability checks |
-| `fetch.py` | 27 | Asset download CLI |
-| `review.py` | 49 | HTTP API, Keep/Discard/Edit, auth |
-| `desktop.py` | 51 | Single instance, loopback |
-| `pipeline.py` | 75 | Settings Start/Pause/Resume |
-| `immich.py` | 47 | API client, paging |
-| `sources.py` | 83 | Folder/Immich sync, unreadable files |
-| `verify.py` | 79 | Overlap, motion routing |
-| `detect.py` | 75 | Set detection |
-| `takeout.py` | 94 | Sidecar pairing |
-| `upload.py` | 92 | Upload approval gate |
+| Metric | Before (main, pre-pass) | After (this pass) | Target |
+| --- | ---: | ---: | ---: |
+| Line coverage | ~55% | **~67%** | 75% |
+| Branch coverage (`--cov-branch`) | ~51% | **~62%** | (informative) |
 
-### Untested flows (ranked by user impact)
+The 75% line target is not fully met yet; the largest remaining gaps are `group.py` (face merge / MediaPipe), `splat.py` (COLMAP / Brush), and HTML-heavy paths in `review.py`. New tests mock Hugin at `stitch.Runner`, torch at `fill.fill`, and Immich at `immich.Client` boundaries.
+
+### By module (line %, fast suite)
+
+Focus modules from the coverage pass (approximate **before → after** on the same metric):
+
+| Module | Before | After | Notes |
+| --- | ---: | ---: | --- |
+| `stitch.py` | 16 | **61** | align/render/blend/solve/level with mocked Runner |
+| `parts.py` | 11 | **63** | PTO split, subset, layout |
+| `group.py` | 17 | **28** | Pure geometry; full `check`/`merge` still needs models |
+| `splat.py` | 41 | **42** | `make_plan`, helpers; SFM/train untouched |
+| `fill.py` | 0 | **62** | Masks/tiles; torch mocked for `fill()` |
+| `edit.py` | 0 | **56** | Missing originals, mocked re-stitch |
+| `export.py` | (low) | **89** | `export` / `result_file` |
+| `enhance.py` | (low) | **93** | Existing + pack tests |
+| `immich.py` | 47 | **72** | Client paging, retry, multipart |
+| `settings_web.py` | (high) | **90** | `test_settings_page.py` |
+| `review.py` | 49 | **63** | HTTP routes, decide/undo, table builders |
+| `blend.py` | 7 | **89** | `plan_layers`, `blend_layers` |
+| `batch.py` | 18 | **23** | `make_plan`, `left_out` |
+| `doctor.py` | 19 | **71** | `check`, mocked tool probe |
+| `fetch.py` | 27 | **67** | `fetch_set` with stub Immich |
+| `watch.py` | 0 | **53** | `rescan`, `run` interrupt path |
+
+### Branch coverage
+
+Branch coverage counts whether both outcomes of conditionals were exercised. Run:
+
+```bash
+pytest -m "not slow" --cov=fuseshot --cov-branch --cov-report=term-missing
+```
+
+Report the **TOTAL** row: `Stmts`, `Miss`, `Branch`, `BrPart`, and `Cover` (combined line/branch figure from pytest-cov). On this pass, branch coverage is about **62%** combined vs ~51% before.
+
+Low branch % often means error paths (Immich 503, stitch OOM fallbacks, optional torch) are only partially hit; failure-injection tests in `test_failure_injection.py` cover several of these.
+
+## What the new fast tests exercise
+
+- **Stitch**: `tests/test_stitch_core.py`, `test_stitch_more.py`, `test_stitch_render_mock.py`, `test_stitch_blend_unit.py`, `test_stitch_level_repair.py`, `test_stitch_exposure_crop.py`, `test_stitch_solve_mock.py`, `test_align_mocked.py`.
+- **Group**: `test_group_logic.py`, `test_group_geometry.py`, `test_group_check_fast.py`, `test_group_overlay.py`.
+- **Fill**: `test_fill_unit.py` (torch boundary mock).
+- **Edit / export**: `test_edit_export.py`.
+- **Immich**: `test_immich_client.py`, `test_fetch_mock.py`.
+- **Review actions**: `test_review_routes.py`, `test_review_api_more.py`, `test_review_actions_more.py`, `test_review_bulk.py`, `test_review_http_get.py`, `test_review_decide_many.py`.
+- **Splat plan**: `test_splat_plan.py`, `test_splat_helpers.py`.
+- **Blend**: `test_blend_unit.py`, `test_blend_layers_run.py`.
+- **Setup / doctor / watch**: `test_doctor_fetch.py`, `test_watch.py`, `test_watch_run.py`.
+
+## Untested flows (ranked by user impact)
 
 1. **Full panorama stitch on Windows frozen build** (Hugin bundled, paths with spaces) — minttop only.
-2. **Review Keep → export with EXIF** at full megapixel cap — partially covered in slow `test_end_to_end`; needs frozen UI path.
-3. **Pipeline pause mid-stitch → resume** — unit tests mock subprocess; needs Windows UI smoke.
-4. **Gaussian splat plan → COLMAP/Brush** — no CI tools; doctor output tested, not execution.
-5. **Group photos / moving / loops with MediaPipe** — skipped when EGL/GPU libs missing; headless skip regression in `test_moving_headless`.
-6. **Enhance / colourise with torch** — optional extra; pack checksum tested.
-7. **Immich upload** — fake server tests; live upload stays off unless `[upload] immich = true` and approval in review.
-8. **Frozen `Fuseshot.exe` argv** — `tests/test_pipeline.py`, `tests/test_runtime` paths; installer_e2e on Windows.
+2. **Review Keep → export at full megapixel cap** — partial; slow `test_end_to_end`.
+3. **Gaussian splat plan → COLMAP/Brush** — plan only; execution needs tools.
+4. **Group photos / moving with MediaPipe** — headless skip in `test_moving_headless`.
+5. **Enhance / colourise with real torch** — optional extra; mocks in fast suite.
+6. **Immich live upload** — fake server only unless upload enabled in settings.
+7. **Frozen `Fuseshot.exe` argv** — `test_pipeline.py`; installer_e2e on Windows.
 
 ## What is already well covered
 
@@ -81,6 +114,7 @@ See `tests/test_failure_injection.py`: pipeline pause, corrupt JPEG, Immich 401/
 ## Synthetic fixtures
 
 - `write_frames()` / `scene()`: wide procedural scene, shared EXIF pattern, no external files.
+- `minimal_pto()` / `stitched_set()`: tiny Hugin projects and review-ready set dirs.
 - Do not commit copyrighted photos. Raw tests download CC0 once to the pytest cache directory.
 
 ## Gaps for manual / minttop

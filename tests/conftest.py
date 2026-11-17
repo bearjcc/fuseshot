@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -76,3 +77,44 @@ def write_frames(folder, count=5, step_degrees=25, start=datetime(2024, 3, 9, 14
 @pytest.fixture
 def photos(tmp_path):
     return write_frames(tmp_path / "photos")
+
+
+def minimal_pto(path, names=None, pairs=4):
+    """Tiny Hugin project for unit tests (no external files required)."""
+    names = names or ["frame0.jpg", "frame1.jpg", "frame2.jpg"]
+    lines = ['p f2 w3000 h1000 v90.0 E0 R0 n"TIFF_m c:LZW"', "m i0"]
+    for index, name in enumerate(names):
+        lines.append(
+            f"i w1000 h750 f0 v50.0 Ra0 Rb0 Rc0 Rd0 Re0 a0 b0 c0 d0 e0 g0 t0 "
+            f"Eev0 Er1 Eb1 r0 p0 y{index * 8} TrX0 TrY0 TrZ0 Tpy0 Tpp0 j0 Va1 Vb0 Vc0 Vd0 Vx0 Vy0 Vm5 n\"{name}\""
+        )
+    for i in range(len(names) - 1):
+        for point in range(pairs):
+            lines.append(f"c n{i} N{i + 1} x{10 + point} y{10 + point} X{100 + point} Y{100 + point}")
+    path = Path(path)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def stitched_set(work, set_id="P00001"):
+    """Minimal stitched set dir for review/export tests."""
+    from PIL import Image
+
+    set_dir = Path(work) / set_id
+    (set_dir / "previews").mkdir(parents=True)
+    (set_dir / "originals").mkdir(parents=True)
+    minimal_pto(set_dir / "optimised.pto")
+    Image.new("RGB", (640, 320), (90, 120, 150)).save(set_dir / "previews" / "cylindrical-level.jpg")
+    manifest = [{"image": str(set_dir / "originals" / "01_a.jpg"), "asset_id": "a", "f35": 26}]
+    set_dir.joinpath("manifest.json").write_text(__import__("json").dumps(manifest), encoding="utf-8")
+    set_dir.joinpath("batch.json").write_text(
+        __import__("json").dumps(
+            {"set_id": set_id, "status": "stitched", "preview_file": "previews/cylindrical-level.jpg",
+             "projection": "cylindrical", "orientation": "level"}
+        ),
+        encoding="utf-8",
+    )
+    set_dir.joinpath("layout.json").write_text(
+        __import__("json").dumps({"model": {"chosen": "rotation", "reason": "test"}}), encoding="utf-8",
+    )
+    return set_dir
