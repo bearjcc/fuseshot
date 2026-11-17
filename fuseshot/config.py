@@ -88,11 +88,16 @@ def load(path):
         return {}
     import tomllib
 
+    import io
+
     with open(path, "rb") as f:
-        try:
-            return tomllib.load(f)
-        except tomllib.TOMLDecodeError as err:
-            raise SettingsError(f"{path}: {err}") from None
+        raw = f.read()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    try:
+        return tomllib.load(io.BytesIO(raw))
+    except tomllib.TOMLDecodeError as err:
+        raise SettingsError(f"{path}: {err}") from None
 
 
 def settings():

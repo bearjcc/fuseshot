@@ -238,7 +238,7 @@ def save(body, cli_sources=False):
 
     url, key, folders, output, outputs = check(body)
     path = config.settings_path()
-    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    text = path.read_text(encoding="utf-8-sig") if path.is_file() else ""
     doc = tomlkit.parse(text) if text else tomlkit.document()
     old = doc.get("sources") or []
     sources = tomlkit.aot()
