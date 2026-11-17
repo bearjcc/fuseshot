@@ -20,7 +20,7 @@ Windows 10/11 and Linux. Python 3.11, 3.12 or 3.13.
 
        py -m venv $HOME\fuseshot-venv
        & $HOME\fuseshot-venv\Scripts\Activate.ps1
-       pip install "fuseshot-0.1.0-py3-none-any.whl[group]"
+       pip install "fuseshot-0.2.0rc1-py3-none-any.whl[group]"
        fuseshot doctor
 
    If PowerShell refuses to run `Activate.ps1`, run
@@ -33,7 +33,7 @@ Windows 10/11 and Linux. Python 3.11, 3.12 or 3.13.
     sudo apt install python3-venv hugin-tools enblend enfuse
     python3 -m venv ~/fuseshot-venv
     . ~/fuseshot-venv/bin/activate
-    pip install "fuseshot-0.1.0-py3-none-any.whl[group]"
+    pip install "fuseshot-0.2.0rc1-py3-none-any.whl[group]"
     fuseshot doctor
 
 Other distributions: the package holding `nona`, `cpfind` and `enblend` is
@@ -279,12 +279,12 @@ being stitched when it stopped starts over.
 
 Install a newer wheel over the old one, in the same venv (use the new file's name):
 
-    pip install --upgrade fuseshot-0.2.0-py3-none-any.whl
+    pip install --upgrade fuseshot-0.2.0rc1-py3-none-any.whl
 
 If pip says the version is already installed (a rebuilt wheel with the same
 number), force it:
 
-    pip install --force-reinstall --no-deps fuseshot-0.1.0-py3-none-any.whl
+    pip install --force-reinstall --no-deps fuseshot-0.2.0rc1-py3-none-any.whl
 
 Your decisions, the photo index and the results are in the home folder, not
 in the venv, so they survive updates. Run `fuseshot run` after updating;

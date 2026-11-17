@@ -1,7 +1,7 @@
-# Windows desktop build (private test installer)
+# Windows desktop build
 
 This folder builds an unsigned **per-user** Fuseshot desktop app for Windows x64.
-The result is meant for clean-machine testing before any public release. **Building
+This produces the unsigned per-user installer shipped on GitHub releases. **Building
 here on Linux only validates scripts and Python layout; it does not prove the
 installer works on Windows.**
 
@@ -12,7 +12,7 @@ installer works on Windows.**
   personal settings, photo libraries, API keys or downloaded models are included.
 - Optional **Hugin** tools under `tools\hugin\bin` when you supply a Hugin tree at
   build time (see below). The installer copies the GPL notices in `notices\`.
-- **Inno Setup** produces `Fuseshot-Setup-test.exe` (unsigned). SmartScreen and
+- **Inno Setup** produces `Fuseshot-Setup-0.2.0rc1.exe` (unsigned). SmartScreen and
   Defender will warn until the file is signed with a real certificate.
 
 ## Requirements (build machine: Windows 10/11 x64)
@@ -36,7 +36,7 @@ Artifacts land in `packaging\windows\dist\`:
 | File | Meaning |
 | --- | --- |
 | `Fuseshot\` | Raw application folder (can be zipped for portable test) |
-| `Fuseshot-Setup-test.exe` | Per-user installer (no admin) |
+| `Fuseshot-Setup-0.2.0rc1.exe` | Per-user installer (no admin) |
 | `SHA256SUMS.txt` | Checksums of the above |
 
 ### Bundling Hugin
@@ -53,9 +53,9 @@ Or copy a portable tree to `packaging\windows\stage\hugin` and pass `-HuginStage
 Redistributing Hugin inside the installer must comply with the GPL. Ship
 `notices\HUGIN.txt` and offer source as Hugin's licence requires.
 
-## End-user install (unsigned test build)
+## End-user install (unsigned)
 
-1. Run `Fuseshot-Setup-test.exe`. Windows may say the publisher is unknown; that is
+1. Run `Fuseshot-Setup-0.2.0rc1.exe`. Windows may say the publisher is unknown; that is
    expected without code signing.
 2. Start **Fuseshot** from the Start menu. The local review page opens in your
    browser on `http://127.0.0.1` (port chosen automatically if 8765 is busy).
@@ -81,12 +81,12 @@ Uninstall removes the program files; data is left unless you delete the folder.
 
 Run through this on a VM or PC **without** Python or Hugin on PATH:
 
-- Install from `Fuseshot-Setup-test.exe` (paths with spaces and non-ASCII username).
+- Install from `Fuseshot-Setup-0.2.0rc1.exe` (paths with spaces and non-ASCII username).
   Silent install: quote `/DIR=` when the path contains spaces, for example
-  `Fuseshot-Setup-test.exe /DIR="{localappdata}\Programs\My Fuseshot" /SILENT`.
+  `Fuseshot-Setup-0.2.0rc1.exe /DIR="{localappdata}\Programs\My Fuseshot" /SILENT`.
 - First-run settings: folder source only, then one small `fuseshot run --year …` from doctor.
 - Start menu twice: second launch should focus the existing browser tab, not a second server.
-- Upgrade install over an older test build: `fuseshot.toml` in `%LOCALAPPDATA%\fuseshot` unchanged.
+- Upgrade install over an older build: `fuseshot.toml` in `%LOCALAPPDATA%\fuseshot` unchanged.
 - Uninstaller removes `Program Files` / local app copy; launch again only after reinstall.
 
 Report results back to the packaging issue; Linux CI cannot substitute for this list.

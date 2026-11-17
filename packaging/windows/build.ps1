@@ -1,4 +1,4 @@
-# Build Fuseshot Windows test installer. Run from any directory; requires Windows.
+# Build Fuseshot Windows installer. Run from any directory; requires Windows.
 param(
     [string]$HuginRoot = $env:HUGIN_ROOT,
     [string]$Python = "python"
@@ -78,8 +78,8 @@ try {
     } | Set-Content -Encoding ascii $Sums
 
     Write-Host "Built $App"
-    if (Test-Path (Join-Path $Dist "Fuseshot-Setup-test.exe")) {
-        Write-Host "Installer: $(Join-Path $Dist 'Fuseshot-Setup-test.exe')"
+    Get-ChildItem -Path $Dist -Filter "Fuseshot-Setup-*.exe" -File -ErrorAction SilentlyContinue | ForEach-Object {
+        Write-Host "Installer: $($_.FullName)"
     }
     Write-Host "Checksums: $Sums"
 } finally {

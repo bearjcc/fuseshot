@@ -20,7 +20,7 @@ This is a manual gate before tagging 1.0. No automated release or PyPI publish i
 
 - [ ] `packaging/windows/build.ps1` on **PowerShell 5.1** without NativeCommandError from PyInstaller INFO lines.
 - [ ] Installer size and bundled Hugin match expectations.
-- [ ] `packaging/windows/installer_smoke.ps1` on built `Fuseshot-Setup-test.exe` (silent `/DIR="…"` with spaces).
+- [ ] `packaging/windows/installer_smoke.ps1` on built `Fuseshot-Setup-0.2.0rc1.exe` (silent `/DIR="…"` with spaces).
 - [ ] Start menu: single instance, loopback port conflict, settings auth unchanged.
 - [ ] Settings: Save → Scan Start/Pause/Resume through panorama on sample folder (no terminal).
 - [ ] Uninstall removes app; `%LOCALAPPDATA%\fuseshot` data kept unless user deletes it.

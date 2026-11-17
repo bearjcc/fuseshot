@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.2.0rc1 — 2026-11-18
+
+First public release candidate. The package version is `0.2.0rc1`. The Windows
+installer is `Fuseshot-Setup-0.2.0rc1.exe` and is unsigned, so SmartScreen
+will warn.
+
 - The panorama, group and splat editors now use the same layout as the loop
   editor: a full-height stage, the Keep and Discard buttons with K and D, and
   the details, type and note in the Info panel (I).
@@ -34,6 +40,12 @@
   and exported with it.
 - Splats from stereo photos and side-by-side stereo video: both views, posed by
   COLMAP as a two-camera rig with a fixed 50 mm baseline.
+- Windows installer: an official smoke test installs to a folder whose path
+  has spaces, opens the review page, and scans a bundled five-frame sample
+  without Immich. The review port is left alone if 8765 is already in use.
+  Settings files that start with a UTF-8 BOM load correctly. Keeping a
+  panorama and exporting it at full size at the same time no longer share a
+  temp file. `build.ps1` works in a uv virtualenv that has no pip.
 
 ## 0.1.0
 

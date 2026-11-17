@@ -2,7 +2,7 @@
 
 from PIL import Image
 
-__version__ = "0.1.0"
+__version__ = "0.2.0rc1"
 
 # Pillow refuses pictures over about 179 megapixels as a guard against hostile
 # files. These are the user's own photos, and phone and stitched panoramas pass

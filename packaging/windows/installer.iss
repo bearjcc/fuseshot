@@ -1,7 +1,7 @@
-; Unsigned per-user test installer for Fuseshot (Windows x64).
+; Unsigned per-user installer for Fuseshot (Windows x64).
 ; Requires Inno Setup 6. Compile with build.ps1 after PyInstaller.
 
-#define AppVersion "0.1.0-test"
+#define AppVersion "0.2.0rc1"
 #define AppName "Fuseshot"
 #define Publisher "Fuseshot contributors"
 
@@ -14,7 +14,7 @@ DefaultDirName={localappdata}\Programs\Fuseshot
 DefaultGroupName=Fuseshot
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-OutputBaseFilename=Fuseshot-Setup-test
+OutputBaseFilename=Fuseshot-Setup-0.2.0rc1
 OutputDir=dist
 Compression=lzma2
 SolidCompression=yes

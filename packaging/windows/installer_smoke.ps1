@@ -1,7 +1,7 @@
-# Windows-only installer smoke (needs built Fuseshot-Setup-test.exe and a clean temp profile).
+# Windows-only installer smoke (needs built Fuseshot-Setup-0.2.0rc1.exe and a clean temp profile).
 # Steps marked [Windows] are not runnable on Linux CI.
 param(
-    [string]$Installer = (Join-Path $PSScriptRoot "dist\Fuseshot-Setup-test.exe")
+    [string]$Installer = (Join-Path $PSScriptRoot "dist\Fuseshot-Setup-0.2.0rc1.exe")
 )
 
 $ErrorActionPreference = "Stop"
