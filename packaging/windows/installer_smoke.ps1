@@ -62,7 +62,7 @@ Write-Host "[Windows] Run sample scan via frozen CLI (folder source, no Immich)"
 Invoke-NativeCommand {
     & $Exe --home $DataHome --source "folder:$PhotoLib" --output-folder $OutDir run --no-loops --no-groups --no-stitch 2>&1 | Out-Host
 }
-$candidates = Join-Path $OutDir "candidates.json"
+$candidates = Join-Path $DataHome "output\candidates.json"
 if (-not (Test-Path $candidates)) {
     throw "run did not write $candidates"
 }
