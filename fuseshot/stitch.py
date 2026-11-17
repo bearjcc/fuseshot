@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import threading
 import time
+import uuid
 from collections import defaultdict
 from pathlib import Path
 
@@ -33,6 +34,20 @@ class StitchError(RuntimeError):
 
 class OutOfSpace(StitchError):
     """A tool failed because the disk is full; worth trying again once there is room."""
+
+
+_full_render_guard = threading.Lock()
+_full_render_locks = {}
+
+
+def _full_render_lock(set_dir):
+    key = str(Path(set_dir).resolve())
+    with _full_render_guard:
+        lock = _full_render_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _full_render_locks[key] = lock
+        return lock
 
 
 WIN_TOOL_DIR_MAX = tools.WIN_TOOL_DIR_MAX
@@ -854,22 +869,24 @@ def render_full(set_dir, name, log=None):
     done = [out_dir / f'{name}.jpg', out_dir / f'{name}_crop.jpg']
     if not source.exists():
         raise StitchError(f'no project for {name}')
-    if all(f.exists() and f.stat().st_mtime >= source.stat().st_mtime for f in done):
-        return out_dir
+    out_dir.mkdir(exist_ok=True)
     orientation = 'vertical' if name.endswith('-vertical') else 'level'
     renders_file = set_dir / 'previews' / 'renders.json'
     renders = json.loads(renders_file.read_text(encoding='utf-8')) if renders_file.exists() else {}
     fuse = (renders.get(name) or {}).get('fused_stacks') is not None
     rect = (renders.get(name) or {}).get('crop_rect')
-    tmp = set_dir / 'full_tmp'
-    if tmp.exists():
-        shutil.rmtree(tmp)
-    tmp.mkdir()
-    out_dir.mkdir(exist_ok=True)
-    if log:
-        log(f'{set_dir.name}: making {name} at full size, which can take several minutes')
-    with Progress(f'full-size render of {set_dir.name}', total=4, unit='steps', every=1.0) as shown:
-        return _render_full(set_dir, name, source, out_dir, done, fuse, orientation, tmp, shown, log, rect)
+    with _full_render_lock(set_dir):
+        if all(f.exists() and f.stat().st_mtime >= source.stat().st_mtime for f in done):
+            return out_dir
+        tmp = set_dir / f'full_tmp_{uuid.uuid4().hex}'
+        tmp.mkdir()
+        if log:
+            log(f'{set_dir.name}: making {name} at full size, which can take several minutes')
+        try:
+            with Progress(f'full-size render of {set_dir.name}', total=4, unit='steps', every=1.0) as shown:
+                return _render_full(set_dir, name, source, out_dir, done, fuse, orientation, tmp, shown, log, rect)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _render_full(set_dir, name, source, out_dir, done, fuse, orientation, tmp, shown, log, rect=None):
