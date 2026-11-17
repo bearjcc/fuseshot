@@ -16,7 +16,7 @@ This is a manual gate before tagging 1.0. No automated release or PyPI publish i
 - [ ] Hugin tools on PATH; `test_stitched_preview` and slow export test pass.
 - [ ] Headless scan: `pytest tests/test_moving_headless.py` (no EGL crash on `run --no-stitch`).
 
-## Windows (minttop or clean VM)
+## Windows (physical test machine or clean VM)
 
 - [ ] `packaging/windows/build.ps1` on **PowerShell 5.1** without NativeCommandError from PyInstaller INFO lines.
 - [ ] Installer size and bundled Hugin match expectations.

@@ -88,7 +88,7 @@ Low branch % often means error paths (Immich 503, stitch OOM fallbacks, optional
 
 ## Untested flows (ranked by user impact)
 
-1. **Full panorama stitch on Windows frozen build** (Hugin bundled, paths with spaces) — minttop only.
+1. **Full panorama stitch on Windows frozen build** (Hugin bundled, paths with spaces) — Windows test machine or VM only.
 2. **Review Keep → export at full megapixel cap** — partial; slow `test_end_to_end`.
 3. **Gaussian splat plan → COLMAP/Brush** — plan only; execution needs tools.
 4. **Group photos / moving with MediaPipe** — headless skip in `test_moving_headless`.
@@ -120,7 +120,7 @@ See `tests/test_failure_injection.py`: pipeline pause, corrupt JPEG, Immich 401/
 - `minimal_pto()` / `stitched_set()`: tiny Hugin projects and review-ready set dirs.
 - Do not commit copyrighted photos. Raw tests download CC0 once to the pytest cache directory.
 
-## Gaps for manual / minttop
+## Gaps for manual / Windows VM testing
 
 - Clean Windows VM: installer, Unicode user profile, uninstall keeps data.
 - GPU: torch fill, mediapipe on production GPU drivers.
