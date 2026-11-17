@@ -31,10 +31,10 @@ Measured on Linux with `pytest -m "not slow"`.
 
 | Metric | Before (main, pre-pass) | After (this pass) | Target |
 | --- | ---: | ---: | ---: |
-| Line coverage | ~55% | **~67%** | 75% |
+| Line coverage | ~55% | **~75%** | 75% |
 | Branch coverage (`--cov-branch`) | ~51% | **~62%** | (informative) |
 
-The 75% line target is not fully met yet; the largest remaining gaps are `group.py` (face merge / MediaPipe), `splat.py` (COLMAP / Brush), and HTML-heavy paths in `review.py`. New tests mock Hugin at `stitch.Runner`, torch at `fill.fill`, and Immich at `immich.Client` boundaries.
+The fast-suite **75%** line target is met on this pass. Remaining gaps are mostly HTML/JS paths in `review.py`, full MediaPipe merge in `group.py`, and CLI surface in `__main__.py`. New tests mock COLMAP/Brush at `splat.colmap` / `splat.run_brush`, YuNet at `group.check`, torch at `fill.inpaint`, and batch stitch at `batch.run_job`.
 
 ### By module (line %, fast suite)
 
@@ -44,17 +44,17 @@ Focus modules from the coverage pass (approximate **before → after** on the sa
 | --- | ---: | ---: | --- |
 | `stitch.py` | 16 | **61** | align/render/blend/solve/level with mocked Runner |
 | `parts.py` | 11 | **63** | PTO split, subset, layout |
-| `group.py` | 17 | **28** | Pure geometry; full `check`/`merge` still needs models |
-| `splat.py` | 41 | **42** | `make_plan`, helpers; SFM/train untouched |
-| `fill.py` | 0 | **62** | Masks/tiles; torch mocked for `fill()` |
-| `edit.py` | 0 | **56** | Missing originals, mocked re-stitch |
+| `group.py` | 17 | **73** | `check` with fake YuNet, `compose`/`merge` mocks, `track`/`swap` |
+| `splat.py` | 41 | **75** | SfM gate + train with mocked COLMAP/Brush |
+| `fill.py` | 0 | **80** | `inpaint` tiles, hole rejection, CUDA guard |
+| `edit.py` | 0 | **91** | Errors, `queue_fill`, re-align fetch |
 | `export.py` | (low) | **89** | `export` / `result_file` |
 | `enhance.py` | (low) | **93** | Existing + pack tests |
 | `immich.py` | 47 | **72** | Client paging, retry, multipart |
 | `settings_web.py` | (high) | **90** | `test_settings_page.py` |
-| `review.py` | 49 | **63** | HTTP routes, decide/undo, table builders |
+| `review.py` | 49 | **65** | Failures/retry/edit/fill/enhance A/B HTTP + unit tests |
 | `blend.py` | 7 | **89** | `plan_layers`, `blend_layers` |
-| `batch.py` | 18 | **23** | `make_plan`, `left_out` |
+| `batch.py` | 18 | **75** | `run_job`, `make_parts`, repair/straighten chunks |
 | `doctor.py` | 19 | **71** | `check`, mocked tool probe |
 | `fetch.py` | 27 | **67** | `fetch_set` with stub Immich |
 | `watch.py` | 0 | **53** | `rescan`, `run` interrupt path |
@@ -74,9 +74,12 @@ Low branch % often means error paths (Immich 503, stitch OOM fallbacks, optional
 ## What the new fast tests exercise
 
 - **Stitch**: `tests/test_stitch_core.py`, `test_stitch_more.py`, `test_stitch_render_mock.py`, `test_stitch_blend_unit.py`, `test_stitch_level_repair.py`, `test_stitch_exposure_crop.py`, `test_stitch_solve_mock.py`, `test_align_mocked.py`.
-- **Group**: `test_group_logic.py`, `test_group_geometry.py`, `test_group_check_fast.py`, `test_group_overlay.py`.
-- **Fill**: `test_fill_unit.py` (torch boundary mock).
-- **Edit / export**: `test_edit_export.py`.
+- **Group**: `test_group_logic.py`, `test_group_geometry.py`, `test_group_check_fast.py`, `test_group_check_mock.py`, `test_group_check_edges.py`, `test_group_analyse_mock.py`, `test_group_compose_mock.py`, `test_group_merge_mock.py`, `test_group_swap_mock.py`, `test_group_overlay.py`.
+- **Fill**: `test_fill_unit.py`, `test_fill_edges.py`, `test_fill_more.py`, `test_fill_inpaint_mock.py`, `test_fill_tiles.py`.
+- **Edit / export**: `test_edit_export.py`, `test_edit_errors.py`, `test_edit_queue_fill.py`.
+- **Splat**: `test_splat_colmap_text.py`, `test_splat_sfm_mock.py`, `test_splat_pass_train_mock.py`, `test_splat_sfm_retry.py`, `test_splat_brush_mock.py`, `test_splat_misc.py`, `test_splat_prepare_mock.py`, `test_splat_colmap_errors.py`, `test_splat_ply_convert.py`.
+- **Batch**: `test_batch_plan.py`, `test_batch_more.py`, `test_batch_run_job_mock.py`, `test_batch_chunk_mock.py`, `test_batch_straighten_chunk.py`, `test_batch_parts_mock.py`.
+- **Review HTTP**: `test_review_http_coverage.py`, `test_review_failures_more.py`, `test_review_edit_errors.py`, `test_review_fill_queue.py`.
 - **Immich**: `test_immich_client.py`, `test_fetch_mock.py`.
 - **Review actions**: `test_review_routes.py`, `test_review_api_more.py`, `test_review_actions_more.py`, `test_review_bulk.py`, `test_review_http_get.py`, `test_review_decide_many.py`.
 - **Splat plan**: `test_splat_plan.py`, `test_splat_helpers.py`.
